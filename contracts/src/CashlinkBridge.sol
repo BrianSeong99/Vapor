@@ -3,18 +3,8 @@ pragma solidity ^0.8.19;
 
 import "./interfaces/ICashlinkBridge.sol";
 import "./interfaces/IProofVerifier.sol";
-
-// Standard ERC20 interface
-interface IERC20 {
-    function transfer(address to, uint256 amount) external returns (bool);
-    function transferFrom(address from, address to, uint256 amount) external returns (bool);
-    function balanceOf(address account) external view returns (uint256);
-}
-
-// Extended ERC20 interface with symbol
-interface IERC20Extended {
-    function symbol() external view returns (string memory);
-}
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 /**
  * @title CashlinkBridge
@@ -173,7 +163,7 @@ contract CashlinkBridge is ICashlinkBridge {
         
         // Get token symbol for event (with fallback)
         string memory symbol = "UNKNOWN";
-        try IERC20Extended(tokenAddress).symbol() returns (string memory _symbol) {
+        try IERC20Metadata(tokenAddress).symbol() returns (string memory _symbol) {
             symbol = _symbol;
         } catch {}
         
