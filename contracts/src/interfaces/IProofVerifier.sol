@@ -7,6 +7,12 @@ pragma solidity ^0.8.19;
  * Manages batch state and order roots with ZK proof verification
  */
 interface IProofVerifier {
+    // Batch data structure
+    struct Batch {
+        bytes32 stateRoot;
+        bytes32 ordersRoot;
+    }
+
     // Events
     event ProofSubmitted(
         uint256 indexed batchId,
@@ -58,4 +64,11 @@ interface IProofVerifier {
      * @return The latest batch ID
      */
     function getLatestBatchId() external view returns (uint256);
+
+    /**
+     * @dev Get the batch data for a specific batch ID
+     * @param batchId The batch ID
+     * @return The batch data including roots and verification status
+     */
+    function getBatch(uint256 batchId) external view returns (Batch memory);
 }
