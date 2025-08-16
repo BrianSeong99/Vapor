@@ -4,12 +4,16 @@ pragma solidity ^0.8.19;
 import "./interfaces/ICashlinkBridge.sol";
 import "./interfaces/IProofVerifier.sol";
 
-// For production, we'd use actual USDC
-// For MVP, we'll use a simple mock token
+// Standard ERC20 interface
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
     function transferFrom(address from, address to, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
+}
+
+// Extended ERC20 interface with symbol
+interface IERC20Extended {
+    function symbol() external view returns (string memory);
 }
 
 /**
@@ -24,10 +28,12 @@ contract CashlinkBridge is ICashlinkBridge {
 
     // State variables
     IProofVerifier public immutable proofVerifier;
-    IERC20 public immutable usdcToken;
     
-    // Mapping to track claimed orders
+    // Mapping to track claimed orders / nullifier
     mapping(uint256 => bool) public claimed;
+    
+    // Mapping from token ID to ERC20 token address
+    mapping(uint256 => address) public supportedTokens;
     
     // For MVP: Owner can manage the contract
     address public owner;
@@ -37,17 +43,17 @@ contract CashlinkBridge is ICashlinkBridge {
         _;
     }
     
-    constructor(address _proofVerifier, address _usdcToken) {
+    constructor(address _proofVerifier) {
         proofVerifier = IProofVerifier(_proofVerifier);
-        usdcToken = IERC20(_usdcToken);
         owner = msg.sender;
     }
     
     /**
-     * @dev Claim USDC using a Merkle proof for a BridgeOut order
+     * @dev Claim tokens using a Merkle proof for a BridgeOut order
      * @param batchId The batch ID containing the order
      * @param orderId The order ID to claim
      * @param to The recipient address
+     * @param tokenId The token ID to claim
      * @param amount The amount to claim
      * @param merkleProof The Merkle proof for the order
      */
@@ -55,6 +61,7 @@ contract CashlinkBridge is ICashlinkBridge {
         uint256 batchId,
         uint256 orderId,
         address to,
+        uint256 tokenId,
         uint256 amount,
         bytes32[] calldata merkleProof
     ) external override {
@@ -66,6 +73,12 @@ contract CashlinkBridge is ICashlinkBridge {
         // Get the batch data from the proof verifier
         IProofVerifier.Batch memory batch = proofVerifier.getBatch(batchId);
         
+        // Check if token is supported
+        address tokenAddress = supportedTokens[tokenId];
+        if (tokenAddress == address(0)) {
+            revert TokenNotSupported();
+        }
+        
         // Check if batch exists (verified)
         if (batch.ordersRoot == bytes32(0)) {
             revert BatchNotVerified();
@@ -73,14 +86,13 @@ contract CashlinkBridge is ICashlinkBridge {
         
         // Construct the order leaf for BridgeOut
         // Leaf format: keccak256(abi.encode(batchId, orderId, ORDER_TYPE_BRIDGE_OUT, to, to, tokenId, amount))
-        // Note: Using tokenId = 1 for USDC, from/to both set to recipient for BridgeOut
         bytes32 orderLeaf = keccak256(abi.encode(
             batchId,
             orderId,
             ORDER_TYPE_BRIDGE_OUT,
             to,      // from (not really used for BridgeOut)
             to,      // to
-            uint256(1), // tokenId (1 = USDC)
+            tokenId, // tokenId
             amount
         ));
         
@@ -89,34 +101,47 @@ contract CashlinkBridge is ICashlinkBridge {
             revert InvalidMerkleProof();
         }
         
+        // Get token contract
+        IERC20 token = IERC20(tokenAddress);
+        
         // Check contract has sufficient balance
-        if (usdcToken.balanceOf(address(this)) < amount) {
+        if (token.balanceOf(address(this)) < amount) {
             revert InsufficientBalance();
         }
         
         // Mark order as claimed
         claimed[orderId] = true;
         
-        // Transfer USDC to recipient
-        require(usdcToken.transfer(to, amount), "USDC transfer failed");
+        // Transfer tokens to recipient
+        require(token.transfer(to, amount), "Token transfer failed");
         
-        emit Claimed(batchId, orderId, to, amount);
+        emit Claimed(batchId, orderId, to, tokenId, amount);
     }
     
     /**
-     * @dev Deposit USDC to trigger a BridgeIn order
+     * @dev Deposit tokens to trigger a BridgeIn order
+     * @param tokenId The token ID to deposit
      * @param amount The amount to deposit
      */
-    function deposit(uint256 amount) external override {
+    function deposit(uint256 tokenId, uint256 amount) external override {
         require(amount > 0, "Amount must be greater than 0");
         
-        // Transfer USDC from user to this contract
+        // Check if token is supported
+        address tokenAddress = supportedTokens[tokenId];
+        if (tokenAddress == address(0)) {
+            revert TokenNotSupported();
+        }
+        
+        // Get token contract
+        IERC20 token = IERC20(tokenAddress);
+        
+        // Transfer tokens from user to this contract
         require(
-            usdcToken.transferFrom(msg.sender, address(this), amount),
-            "USDC transfer failed"
+            token.transferFrom(msg.sender, address(this), amount),
+            "Token transfer failed"
         );
         
-        emit Deposited(msg.sender, amount);
+        emit Deposited(msg.sender, tokenId, amount);
     }
     
     /**
@@ -129,11 +154,75 @@ contract CashlinkBridge is ICashlinkBridge {
     }
     
     /**
-     * @dev Get the USDC token address
-     * @return The USDC token address
+     * @dev Add a supported ERC20 token
+     * @param tokenId The token ID to assign
+     * @param tokenAddress The ERC20 token address
      */
-    function getUSDCToken() external view override returns (address) {
-        return address(usdcToken);
+    function addSupportedToken(uint256 tokenId, address tokenAddress) external override onlyOwner {
+        if (tokenAddress == address(0)) {
+            revert InvalidTokenAddress();
+        }
+        
+        if (supportedTokens[tokenId] != address(0)) {
+            revert TokenAlreadyExists();
+        }
+        
+        supportedTokens[tokenId] = tokenAddress;
+        
+        // Get token symbol for event (with fallback)
+        string memory symbol = "UNKNOWN";
+        try IERC20Extended(tokenAddress).symbol() returns (string memory _symbol) {
+            symbol = _symbol;
+        } catch {}
+        
+        emit TokenAdded(tokenId, tokenAddress, symbol);
+    }
+
+    /**
+     * @dev Remove a supported ERC20 token
+     * @param tokenId The token ID to remove
+     */
+    function removeSupportedToken(uint256 tokenId) external override onlyOwner {
+        address tokenAddress = supportedTokens[tokenId];
+        if (tokenAddress == address(0)) {
+            revert TokenNotSupported();
+        }
+        
+        delete supportedTokens[tokenId];
+        
+        emit TokenRemoved(tokenId, tokenAddress);
+    }
+
+    /**
+     * @dev Get the token address for a given token ID
+     * @param tokenId The token ID
+     * @return The token address
+     */
+    function getSupportedToken(uint256 tokenId) external view override returns (address) {
+        return supportedTokens[tokenId];
+    }
+
+    /**
+     * @dev Check if a token ID is supported
+     * @param tokenId The token ID
+     * @return True if supported, false otherwise
+     */
+    function isTokenSupported(uint256 tokenId) external view override returns (bool) {
+        return supportedTokens[tokenId] != address(0);
+    }
+
+    /**
+     * @dev Get the contract balance for a specific token
+     * @param tokenId The token ID
+     * @return The token balance of this contract
+     */
+    function getTokenBalance(uint256 tokenId) external view override returns (uint256) {
+        address tokenAddress = supportedTokens[tokenId];
+        if (tokenAddress == address(0)) {
+            return 0;
+        }
+        
+        return IERC20(tokenAddress).balanceOf(address(this));
     }
     
     /**
@@ -166,19 +255,18 @@ contract CashlinkBridge is ICashlinkBridge {
     }
     
     /**
-     * @dev Emergency function to withdraw USDC (MVP only)
+     * @dev Emergency function to withdraw tokens (MVP only)
+     * @param tokenId The token ID to withdraw
      * @param to Recipient address
      * @param amount Amount to withdraw
      */
-    function emergencyWithdraw(address to, uint256 amount) external onlyOwner {
-        require(usdcToken.transfer(to, amount), "USDC transfer failed");
-    }
-    
-    /**
-     * @dev Get contract USDC balance
-     * @return The USDC balance of this contract
-     */
-    function getBalance() external view returns (uint256) {
-        return usdcToken.balanceOf(address(this));
+    function emergencyWithdraw(uint256 tokenId, address to, uint256 amount) external onlyOwner {
+        address tokenAddress = supportedTokens[tokenId];
+        if (tokenAddress == address(0)) {
+            revert TokenNotSupported();
+        }
+        
+        IERC20 token = IERC20(tokenAddress);
+        require(token.transfer(to, amount), "Token transfer failed");
     }
 }
