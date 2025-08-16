@@ -1,0 +1,59 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo
+Cargo.lock
+# Uncomment above line if this is a library crate
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+cashlink.db*
+
+# Logs
+*.log
+logs/
+
+# Runtime
+*.pid
+
+# Coverage
+*.gcda
+*.gcno
+*.gcov
+*.info
+lcov/
+
+# Backup files
+*.bak
+*.backup
+*.tmp
+
+# Build artifacts
+dist/
+build/
+out/
