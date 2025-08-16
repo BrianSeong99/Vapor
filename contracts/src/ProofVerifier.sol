@@ -2,9 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "./interfaces/IProofVerifier.sol";
-
-// For production SP1 integration (commented for MVP)
-// import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
+import {ISP1Verifier} from "@sp1-contracts/ISP1Verifier.sol";
 
 /**
  * @title ProofVerifier
@@ -26,20 +24,27 @@ contract ProofVerifier is IProofVerifier {
     // Latest batch ID
     uint256 public latestBatchId;
     
-    // For MVP: Simple owner-based access control
+    // For MVP: Simple owner-based access control  
     address public owner;
     
-    // SP1 verification components (for production)
-    // ISP1Verifier public sp1Verifier;
-    // bytes32 public programVKey;
+    // SP1 verification components
+    ISP1Verifier public immutable sp1Verifier;
+    bytes32 public immutable programVKey;
+    
+    // For MVP: Enable/disable actual SP1 verification
+    bool public useActualSP1Verification;
     
     modifier onlyOwner() {
         require(msg.sender == owner, "Not authorized");
         _;
     }
     
-    constructor() {
+    constructor(address _sp1Verifier, bytes32 _programVKey, bool _useActualSP1Verification) {
         owner = msg.sender;
+        sp1Verifier = ISP1Verifier(_sp1Verifier);
+        programVKey = _programVKey;
+        useActualSP1Verification = _useActualSP1Verification;
+        
         // Initialize genesis batch (batch 0) with empty roots
         batches[0] = Batch({
             stateRoot: bytes32(0),
@@ -72,9 +77,12 @@ contract ProofVerifier is IProofVerifier {
             revert InvalidBatchId();
         }
         
-        // For MVP: Skip actual ZK proof verification
-        // TODO: Replace with actual SP1 verification
-        _verifyProofMVP(proof, batchId, prevStateRoot, prevOrdersRoot, newStateRoot, newOrdersRoot);
+        // Verify proof based on configuration
+        if (useActualSP1Verification) {
+            _verifyProofSP1(proof, batchId, prevStateRoot, prevOrdersRoot, newStateRoot, newOrdersRoot);
+        } else {
+            _verifyProofMVP(proof, batchId, prevStateRoot, prevOrdersRoot, newStateRoot, newOrdersRoot);
+        }
         
         // Store the new batch
         batches[batchId] = Batch({
@@ -122,11 +130,11 @@ contract ProofVerifier is IProofVerifier {
      */
     function _verifyProofMVP(
         bytes calldata proof,
-        uint256 batchId,
-        bytes32 prevStateRoot,
-        bytes32 prevOrdersRoot,
-        bytes32 newStateRoot,
-        bytes32 newOrdersRoot
+        uint256 /* batchId */,
+        bytes32 /* prevStateRoot */,
+        bytes32 /* prevOrdersRoot */,
+        bytes32 /* newStateRoot */,
+        bytes32 /* newOrdersRoot */
     ) internal pure {
         // Basic validation - proof must not be empty
         if (proof.length == 0) {
@@ -138,10 +146,9 @@ contract ProofVerifier is IProofVerifier {
     }
     
     /**
-     * @dev Production SP1 proof verification (template for future implementation)
-     * @notice This shows how SP1 verification would work in production
+     * @dev Production SP1 proof verification
+     * @notice Uses the official SP1 verifier contract as per documentation
      */
-    /*
     function _verifyProofSP1(
         bytes calldata proof,
         uint256 batchId,
@@ -149,7 +156,7 @@ contract ProofVerifier is IProofVerifier {
         bytes32 prevOrdersRoot,
         bytes32 newStateRoot,
         bytes32 newOrdersRoot
-    ) internal {
+    ) internal view {
         // Encode public inputs for SP1 verification
         PublicInputs memory publicInputs = PublicInputs({
             batchId: batchId,
@@ -161,12 +168,19 @@ contract ProofVerifier is IProofVerifier {
         
         bytes memory publicInputsBytes = abi.encode(publicInputs);
         
-        // Verify SP1 proof
+        // Verify SP1 proof using the official verifier
         try sp1Verifier.verifyProof(programVKey, publicInputsBytes, proof) {
             // Proof verified successfully
         } catch {
             revert InvalidProof();
         }
     }
-    */
+    
+    /**
+     * @dev Toggle SP1 verification mode (MVP helper function)
+     * @notice Only owner can change verification mode
+     */
+    function setUseActualSP1Verification(bool _useActualSP1Verification) external onlyOwner {
+        useActualSP1Verification = _useActualSP1Verification;
+    }
 }
