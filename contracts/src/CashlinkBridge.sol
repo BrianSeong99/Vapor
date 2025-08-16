@@ -122,9 +122,11 @@ contract CashlinkBridge is ICashlinkBridge {
      * @dev Deposit tokens to trigger a BridgeIn order
      * @param tokenId The token ID to deposit
      * @param amount The amount to deposit
+     * @param bankingHash Hash of the banking transfer information (account details, reference, etc.)
      */
-    function deposit(uint256 tokenId, uint256 amount) external override {
+    function deposit(uint256 tokenId, uint256 amount, bytes32 bankingHash) external override {
         require(amount > 0, "Amount must be greater than 0");
+        require(bankingHash != bytes32(0), "Banking hash cannot be empty");
         
         // Check if token is supported
         address tokenAddress = supportedTokens[tokenId];
@@ -141,7 +143,7 @@ contract CashlinkBridge is ICashlinkBridge {
             "Token transfer failed"
         );
         
-        emit Deposited(msg.sender, tokenId, amount);
+        emit Deposited(msg.sender, tokenId, amount, bankingHash);
     }
     
     /**
