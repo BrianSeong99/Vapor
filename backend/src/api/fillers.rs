@@ -79,7 +79,7 @@ pub async fn lock_order(
     info!("Locking order {} for filler {}", order_id, req.filler_id);
 
     // Verify order exists and is in discovery phase
-    let order_query = "SELECT * FROM orders WHERE id = $1 AND status = $2";
+    let order_query = "SELECT id, order_type, status, from_address, to_address, token_id, amount, bank_account, bank_service, banking_hash, filler_id, locked_amount, batch_id, created_at, updated_at FROM orders WHERE id = $1 AND status = $2";
     let row = sqlx::query(order_query)
         .bind(&order_id)
         .bind(OrderStatus::Discovery as i32)
@@ -136,13 +136,15 @@ pub async fn lock_order(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+
+
     if result.rows_affected() == 0 {
         warn!("Order {} was already locked or changed status", order_id);
         return Err(StatusCode::CONFLICT);
     }
 
     // Fetch updated order
-    let updated_row = sqlx::query("SELECT * FROM orders WHERE id = $1")
+    let updated_row = sqlx::query("SELECT id, order_type, status, from_address, to_address, token_id, amount, bank_account, bank_service, banking_hash, filler_id, locked_amount, batch_id, created_at, updated_at FROM orders WHERE id = $1")
         .bind(&order_id)
         .fetch_one(&app_state.db)
         .await
@@ -201,7 +203,7 @@ pub async fn submit_payment_proof(
     }
 
     // Fetch updated order
-    let updated_row = sqlx::query("SELECT * FROM orders WHERE id = $1")
+    let updated_row = sqlx::query("SELECT id, order_type, status, from_address, to_address, token_id, amount, bank_account, bank_service, banking_hash, filler_id, locked_amount, batch_id, created_at, updated_at FROM orders WHERE id = $1")
         .bind(&order_id)
         .fetch_one(&app_state.db)
         .await

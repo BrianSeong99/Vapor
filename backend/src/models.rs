@@ -115,7 +115,7 @@ pub struct AccountState {
 }
 
 // API request/response types
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateOrderRequest {
     pub order_type: OrderType,
     pub from_address: Option<String>,
@@ -127,7 +127,7 @@ pub struct CreateOrderRequest {
     pub banking_hash: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OrderResponse {
     pub id: String,
     pub order_type: OrderType,
@@ -141,20 +141,20 @@ pub struct OrderResponse {
 }
 
 /// Request to lock an order for filling
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LockOrderRequest {
     pub filler_id: String,
     pub amount: String,
 }
 
 /// Request to submit payment proof
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SubmitPaymentProofRequest {
     pub banking_hash: String,
 }
 
 /// Order status tracking for seller
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct OrderStatusResponse {
     pub id: String,
     pub status: OrderStatus,
@@ -165,7 +165,7 @@ pub struct OrderStatusResponse {
 }
 
 /// Three phases of order processing
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum OrderPhase {
     PrivateListing,    // Order created, waiting for blockchain confirmation
     FindingFillers,    // In discovery, looking for fillers
@@ -173,7 +173,7 @@ pub enum OrderPhase {
 }
 
 /// Filler information
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct FillerInfo {
     pub id: String,
     pub locked_amount: String,

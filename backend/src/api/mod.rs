@@ -16,6 +16,9 @@ pub mod proofs;
 pub mod relayer;
 pub mod fillers;
 
+#[cfg(test)]
+pub mod tests;
+
 #[derive(Clone)]
 pub struct AppState {
     pub config: Config,

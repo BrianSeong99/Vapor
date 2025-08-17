@@ -66,3 +66,23 @@ impl Config {
         })
     }
 }
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            api: ApiConfig { port: 8080 },
+            database: DatabaseConfig { 
+                url: ":memory:".to_string() 
+            },
+            blockchain: BlockchainConfig {
+                rpc_url: "http://localhost:8545".to_string(),
+                contract_address: "0x0000000000000000000000000000000000000000".to_string(),
+                private_key: "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            },
+            batch: BatchConfig {
+                interval_seconds: 60,
+                max_orders_per_batch: 100,
+            },
+        }
+    }
+}
