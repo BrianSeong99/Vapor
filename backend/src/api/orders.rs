@@ -375,3 +375,39 @@ pub async fn match_orders(
         "count": matches.len()
     })))
 }
+
+/// Mark order as in discovery phase (for testing/simulation)
+pub async fn mark_discovery(
+    State(app_state): State<AppState>,
+    Path(order_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    info!("Marking order as discovery: {}", order_id);
+    
+    // Update order status to Discovery
+    let update_query = "UPDATE orders SET status = ?, updated_at = ? WHERE id = ?";
+    match sqlx::query(update_query)
+        .bind(OrderStatus::Discovery as i32)
+        .bind(Utc::now())
+        .bind(&order_id)
+        .execute(&app_state.db)
+        .await
+    {
+        Ok(result) => {
+            if result.rows_affected() == 0 {
+                warn!("Order {} not found for discovery update", order_id);
+                Err(StatusCode::NOT_FOUND)
+            } else {
+                info!("Order {} marked as discovery", order_id);
+                Ok(Json(serde_json::json!({
+                    "success": true,
+                    "message": "Order marked as discovery",
+                    "order_id": order_id
+                })))
+            }
+        },
+        Err(e) => {
+            error!("Failed to update order to discovery: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}

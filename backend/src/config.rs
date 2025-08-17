@@ -23,6 +23,8 @@ pub struct DatabaseConfig {
 pub struct BlockchainConfig {
     pub rpc_url: String,
     pub contract_address: String,
+    pub proof_verifier_address: String,
+    pub usdc_address: String,
     pub private_key: String,
 }
 
@@ -36,20 +38,27 @@ impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
         Ok(Config {
             api: ApiConfig {
-                port: env::var("PORT")
+                port: env::var("SERVER_PORT")
+                    .or_else(|_| env::var("PORT"))
                     .unwrap_or_else(|_| "8080".to_string())
                     .parse()
                     .unwrap_or(8080),
             },
             database: DatabaseConfig {
                 url: env::var("DATABASE_URL")
-                    .unwrap_or_else(|_| "sqlite:cashlink.db".to_string()),
+                    .unwrap_or_else(|_| "sqlite:vapor.db".to_string()),
             },
             blockchain: BlockchainConfig {
-                rpc_url: env::var("RPC_URL")
+                rpc_url: env::var("CHAIN_RPC_URL")
+                    .or_else(|_| env::var("RPC_URL"))
                     .unwrap_or_else(|_| "http://localhost:8545".to_string()),
-                contract_address: env::var("CONTRACT_ADDRESS")
-                    .map_err(|_| anyhow::anyhow!("CONTRACT_ADDRESS environment variable required"))?,
+                contract_address: env::var("VAPOR_BRIDGE_CONTRACT")
+                    .or_else(|_| env::var("CONTRACT_ADDRESS"))
+                    .map_err(|_| anyhow::anyhow!("VAPOR_BRIDGE_CONTRACT or CONTRACT_ADDRESS environment variable required"))?,
+                proof_verifier_address: env::var("PROOF_VERIFIER_CONTRACT")
+                    .map_err(|_| anyhow::anyhow!("PROOF_VERIFIER_CONTRACT environment variable required"))?,
+                usdc_address: env::var("USDC_CONTRACT")
+                    .map_err(|_| anyhow::anyhow!("USDC_CONTRACT environment variable required"))?,
                 private_key: env::var("PRIVATE_KEY")
                     .map_err(|_| anyhow::anyhow!("PRIVATE_KEY environment variable required"))?,
             },
@@ -77,6 +86,8 @@ impl Default for Config {
             blockchain: BlockchainConfig {
                 rpc_url: "http://localhost:8545".to_string(),
                 contract_address: "0x0000000000000000000000000000000000000000".to_string(),
+                proof_verifier_address: "0x0000000000000000000000000000000000000001".to_string(),
+                usdc_address: "0x0000000000000000000000000000000000000002".to_string(),
                 private_key: "0x0000000000000000000000000000000000000000000000000000000000000000".to_string(),
             },
             batch: BatchConfig {

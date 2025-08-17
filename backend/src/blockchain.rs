@@ -84,7 +84,7 @@ impl BlockchainClient {
         let web3 = Web3::new(transport);
 
         // Bridge contract ABI
-        let bridge_abi = include_bytes!("abi/VaporBridge.json");
+        let bridge_abi = include_bytes!("abi/VaporBridge_abi.json");
         let bridge_contract = Contract::from_json(
             web3.eth(),
             bridge_address,
@@ -92,7 +92,7 @@ impl BlockchainClient {
         )?;
 
         // Proof Verifier contract ABI
-        let proof_verifier_abi = include_bytes!("abi/IProofVerifier.json");
+        let proof_verifier_abi = include_bytes!("abi/IProofVerifier_abi.json");
         let proof_verifier_contract = Contract::from_json(
             web3.eth(),
             proof_verifier_address,

@@ -60,12 +60,11 @@ async fn main() -> anyhow::Result<()> {
     let bridge_address = config.blockchain.contract_address.parse()
         .map_err(|_| anyhow::anyhow!("Invalid CONTRACT_ADDRESS format"))?;
     
-    // For MVP, use placeholder addresses (will be set during contract deployment)
-    let proof_verifier_address = "0x0000000000000000000000000000000000000001".parse()
-        .map_err(|_| anyhow::anyhow!("Invalid ProofVerifier address format"))?;
+    let proof_verifier_address = config.blockchain.proof_verifier_address.parse()
+        .map_err(|_| anyhow::anyhow!("Invalid PROOF_VERIFIER_CONTRACT format"))?;
     
-    let usdc_address = "0x0000000000000000000000000000000000000002".parse()
-        .map_err(|_| anyhow::anyhow!("Invalid USDC address format"))?;
+    let usdc_address = config.blockchain.usdc_address.parse()
+        .map_err(|_| anyhow::anyhow!("Invalid USDC_CONTRACT format"))?;
     
     let blockchain_client = crate::blockchain::BlockchainClient::new(
         config.blockchain.rpc_url.clone(),
@@ -120,6 +119,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/orders/:order_id", get(api::orders::get_order))
         .route("/api/v1/orders/:order_id/status", get(api::orders::get_order_status))
         .route("/api/v1/orders/:order_id/mark-paid", post(api::orders::mark_paid))
+        .route("/api/v1/orders/:order_id/mark-discovery", post(api::orders::mark_discovery))
         .route("/api/v1/orders/match", post(api::orders::match_orders))
         
         // Filler endpoints
