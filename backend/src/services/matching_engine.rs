@@ -159,7 +159,11 @@ mod tests {
             to_address: Some("0x9876543210987654321098765432109876543210".to_string()),
             token_id: 1, // USDC token ID
             amount: amount.to_string(),
+            bank_account: Some("12345678".to_string()),
+            bank_service: Some("PayPal Hong Kong".to_string()),
             banking_hash: None,
+            filler_id: None,
+            locked_amount: None,
             status: OrderStatus::Pending,
             batch_id: None,
             created_at: Utc::now(),

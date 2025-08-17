@@ -395,7 +395,11 @@ mod tests {
                 to_address TEXT,
                 token_id INTEGER NOT NULL,
                 amount TEXT NOT NULL,
+                bank_account TEXT,
+                bank_service TEXT,
                 banking_hash TEXT,
+                filler_id TEXT,
+                locked_amount TEXT,
                 batch_id TEXT,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -560,7 +564,11 @@ mod tests {
             to_address: Some(format!("{:?}", deposit_event.user)),
             token_id: 1, // USDC
             amount: deposit_event.amount.to_string(),
+            bank_account: None,
+            bank_service: None,
             banking_hash: Some(format!("{:?}", deposit_event.banking_hash)),
+            filler_id: None,
+            locked_amount: None,
             batch_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

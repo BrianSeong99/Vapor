@@ -408,7 +408,11 @@ mod tests {
             to_address: to_addr.map(|s| s.to_string()),
             token_id: 1, // USDC
             amount: amount.to_string(),
+            bank_account: Some("12345678".to_string()),
+            bank_service: Some("PayPal Hong Kong".to_string()),
             banking_hash: Some(format!("banking_hash_{}", id)),
+            filler_id: None,
+            locked_amount: None,
             batch_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

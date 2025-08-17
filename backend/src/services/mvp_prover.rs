@@ -261,7 +261,11 @@ mod tests {
             to_address: Some("0x0987654321098765432109876543210987654321".to_string()),
             token_id: 1,
             amount: "1000000000000000000".to_string(), // 1 ETH
+            bank_account: Some("12345678".to_string()),
+            bank_service: Some("PayPal Hong Kong".to_string()),
             banking_hash: Some(format!("banking_hash_{}", id)),
+            filler_id: None,
+            locked_amount: None,
             batch_id: Some(1),
             created_at: Utc::now(),
             updated_at: Utc::now(),

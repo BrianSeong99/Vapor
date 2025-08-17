@@ -466,10 +466,11 @@ mod tests {
     fn test_order_status_serialization() {
         // Test enum values
         assert_eq!(OrderStatus::Pending as i32, 0);
-        assert_eq!(OrderStatus::Locked as i32, 1);
-        assert_eq!(OrderStatus::MarkPaid as i32, 2);
-        assert_eq!(OrderStatus::Settled as i32, 3);
-        assert_eq!(OrderStatus::Failed as i32, 4);
+        assert_eq!(OrderStatus::Discovery as i32, 1);
+        assert_eq!(OrderStatus::Locked as i32, 2);
+        assert_eq!(OrderStatus::MarkPaid as i32, 3);
+        assert_eq!(OrderStatus::Settled as i32, 4);
+        assert_eq!(OrderStatus::Failed as i32, 5);
 
         // Test serialization round-trip
         let status = OrderStatus::MarkPaid;
@@ -481,10 +482,11 @@ mod tests {
     #[test]
     fn test_order_status_from_i32() {
         assert_eq!(OrderStatus::from(0), OrderStatus::Pending);
-        assert_eq!(OrderStatus::from(1), OrderStatus::Locked);
-        assert_eq!(OrderStatus::from(2), OrderStatus::MarkPaid);
-        assert_eq!(OrderStatus::from(3), OrderStatus::Settled);
-        assert_eq!(OrderStatus::from(4), OrderStatus::Failed);
+        assert_eq!(OrderStatus::from(1), OrderStatus::Discovery);
+        assert_eq!(OrderStatus::from(2), OrderStatus::Locked);
+        assert_eq!(OrderStatus::from(3), OrderStatus::MarkPaid);
+        assert_eq!(OrderStatus::from(4), OrderStatus::Settled);
+        assert_eq!(OrderStatus::from(5), OrderStatus::Failed);
         assert_eq!(OrderStatus::from(-1), OrderStatus::Pending); // Default fallback
     }
 
@@ -509,6 +511,8 @@ mod tests {
             to_address: None,
             token_id: 1,
             amount: "1000000".to_string(),
+            bank_account: Some("12345678".to_string()),
+            bank_service: Some("PayPal Hong Kong".to_string()),
             banking_hash: Some("0xabcdef1234567890".to_string()),
         };
 
@@ -535,7 +539,11 @@ mod tests {
             to_address: None,
             token_id: 1,
             amount: "1000000".to_string(),
+            bank_account: Some("12345678".to_string()),
+            bank_service: Some("PayPal Hong Kong".to_string()),
             banking_hash: Some("0xhash".to_string()),
+            filler_id: None,
+            locked_amount: None,
             batch_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -591,7 +599,11 @@ mod tests {
             to_address: None,
             token_id: 1,
             amount: "1000000".to_string(),
+            bank_account: Some("12345678".to_string()),
+            bank_service: Some("PayPal Hong Kong".to_string()),
             banking_hash: Some("0xhash".to_string()),
+            filler_id: None,
+            locked_amount: None,
             batch_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -627,7 +639,11 @@ mod tests {
             to_address: None,
             token_id: 1,
             amount: "1000000".to_string(),
+            bank_account: Some("12345678".to_string()),
+            bank_service: Some("PayPal Hong Kong".to_string()),
             banking_hash: Some("0xhash".to_string()),
+            filler_id: None,
+            locked_amount: None,
             batch_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -734,7 +750,11 @@ mod tests {
             to_address: Some("0x9876543210987654321098765432109876543210".to_string()),
             token_id: 1,
             amount: "1000000".to_string(),
+            bank_account: Some("12345678".to_string()),
+            bank_service: Some("PayPal Hong Kong".to_string()),
             banking_hash: None,
+            filler_id: None,
+            locked_amount: None,
             batch_id: Some(123),
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -758,7 +778,11 @@ mod tests {
             to_address: Some("0x9876543210987654321098765432109876543210".to_string()),
             token_id: 1,
             amount: "1000000".to_string(),
+            bank_account: Some("12345678".to_string()),
+            bank_service: Some("PayPal Hong Kong".to_string()),
             banking_hash: Some("0xbankinghash".to_string()),
+            filler_id: None,
+            locked_amount: None,
             batch_id: Some(123),
             created_at: Utc::now(),
             updated_at: Utc::now(),

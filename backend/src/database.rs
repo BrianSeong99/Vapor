@@ -26,7 +26,11 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             to_address TEXT, 
             token_id INTEGER NOT NULL,
             amount TEXT NOT NULL,
+            bank_account TEXT,
+            bank_service TEXT,
             banking_hash TEXT,
+            filler_id TEXT,
+            locked_amount TEXT,
             status INTEGER NOT NULL DEFAULT 0,
             batch_id INTEGER,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -86,8 +90,8 @@ pub mod helpers {
     pub async fn insert_order(pool: &SqlitePool, order: &Order) -> Result<()> {
         sqlx::query(
             r#"
-            INSERT INTO orders (id, order_type, status, from_address, to_address, token_id, amount, banking_hash, batch_id, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            INSERT INTO orders (id, order_type, status, from_address, to_address, token_id, amount, bank_account, bank_service, banking_hash, filler_id, locked_amount, batch_id, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             "#,
         )
         .bind(&order.id)
@@ -97,7 +101,11 @@ pub mod helpers {
         .bind(&order.to_address)
         .bind(order.token_id as i32)
         .bind(&order.amount)
+        .bind(&order.bank_account)
+        .bind(&order.bank_service)
         .bind(&order.banking_hash)
+        .bind(&order.filler_id)
+        .bind(&order.locked_amount)
         .bind(order.batch_id.map(|id| id as i32))
         .bind(order.created_at)
         .bind(order.updated_at)
@@ -110,7 +118,7 @@ pub mod helpers {
     /// Get an order by ID
     pub async fn get_order_by_id(pool: &SqlitePool, order_id: &str) -> Result<Option<Order>> {
         let row = sqlx::query(
-            "SELECT id, order_type, status, from_address, to_address, token_id, amount, banking_hash, batch_id, created_at, updated_at FROM orders WHERE id = ?"
+            "SELECT id, order_type, status, from_address, to_address, token_id, amount, bank_account, bank_service, banking_hash, filler_id, locked_amount, batch_id, created_at, updated_at FROM orders WHERE id = ?"
         )
         .bind(order_id)
         .fetch_optional(pool)
@@ -232,6 +240,26 @@ mod tests {
         run_migrations(&pool).await.expect("Failed to run migrations");
         pool
     }
+    
+    fn create_test_order(id: &str, order_type: OrderType, status: OrderStatus, amount: &str) -> Order {
+        Order {
+            id: id.to_string(),
+            order_type,
+            status,
+            from_address: Some("0x1234567890123456789012345678901234567890".to_string()),
+            to_address: Some("0x0987654321098765432109876543210987654321".to_string()),
+            token_id: 1,
+            amount: amount.to_string(),
+            bank_account: Some("12345678".to_string()),
+            bank_service: Some("PayPal Hong Kong".to_string()),
+            banking_hash: Some("0xabcdef".to_string()),
+            filler_id: None,
+            locked_amount: None,
+            batch_id: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
 
     #[tokio::test]
     async fn test_database_initialization() {
@@ -270,7 +298,11 @@ mod tests {
             to_address: Some("0x0987654321098765432109876543210987654321".to_string()),
             token_id: 1,
             amount: "1000000".to_string(), // 1 USDC
+            bank_account: Some("12345678".to_string()),
+            bank_service: Some("PayPal Hong Kong".to_string()),
             banking_hash: Some("0xabcdef".to_string()),
+            filler_id: None,
+            locked_amount: None,
             batch_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -313,7 +345,11 @@ mod tests {
                 to_address: Some("0x0987654321098765432109876543210987654321".to_string()),
                 token_id: 1,
                 amount: "1000000".to_string(),
+                bank_account: Some("12345678".to_string()),
+                bank_service: Some("PayPal Hong Kong".to_string()),
                 banking_hash: Some("0xabcdef".to_string()),
+                filler_id: None,
+                locked_amount: None,
                 batch_id: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
@@ -382,36 +418,28 @@ mod tests {
         
         // Insert orders with different statuses
         for i in 0..3 {
-            let order = Order {
-                id: Uuid::new_v4().to_string(),
-                order_type: OrderType::BridgeIn,
-                status: OrderStatus::Pending,
-                from_address: Some(format!("0x{:040x}", i)),
-                to_address: None,
-                token_id: 1,
-                amount: "1000000".to_string(),
-                banking_hash: None,
-                batch_id: None,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            };
+            let mut order = create_test_order(
+                &Uuid::new_v4().to_string(),
+                OrderType::BridgeIn,
+                OrderStatus::Pending,
+                "1000000"
+            );
+            order.from_address = Some(format!("0x{:040x}", i));
+            order.to_address = None;
+            order.banking_hash = None;
             insert_order(&pool, &order).await.unwrap();
         }
         
         for i in 0..2 {
-            let order = Order {
-                id: Uuid::new_v4().to_string(),
-                order_type: OrderType::BridgeIn,
-                status: OrderStatus::Locked,
-                from_address: Some(format!("0x{:040x}", i + 10)),
-                to_address: None,
-                token_id: 1,
-                amount: "1000000".to_string(),
-                banking_hash: None,
-                batch_id: None,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            };
+            let mut order = create_test_order(
+                &Uuid::new_v4().to_string(),
+                OrderType::BridgeIn,
+                OrderStatus::Locked,
+                "1000000"
+            );
+            order.from_address = Some(format!("0x{:040x}", i + 10));
+            order.to_address = None;
+            order.banking_hash = None;
             insert_order(&pool, &order).await.unwrap();
         }
         
@@ -430,19 +458,15 @@ mod tests {
         let pool = setup_test_db().await;
         
         // Insert test data
-        let order = Order {
-            id: Uuid::new_v4().to_string(),
-            order_type: OrderType::BridgeIn,
-            status: OrderStatus::Pending,
-            from_address: Some("0x1234567890123456789012345678901234567890".to_string()),
-            to_address: None,
-            token_id: 1,
-            amount: "1000000".to_string(),
-            banking_hash: None,
-            batch_id: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
+        let mut order = create_test_order(
+            &Uuid::new_v4().to_string(),
+            OrderType::BridgeIn,
+            OrderStatus::Pending,
+            "1000000"
+        );
+        order.from_address = Some("0x1234567890123456789012345678901234567890".to_string());
+        order.to_address = None;
+        order.banking_hash = None;
         insert_order(&pool, &order).await.unwrap();
         
         upsert_account_balance(&pool, "0x1234567890123456789012345678901234567890", 1, "1000000").await.unwrap();
@@ -472,19 +496,15 @@ mod tests {
         // Test with very large amounts (18 decimal precision)
         let large_amount = "999999999999999999999999999999999999"; // 36 digits
         
-        let order = Order {
-            id: Uuid::new_v4().to_string(),
-            order_type: OrderType::BridgeIn,
-            status: OrderStatus::Pending,
-            from_address: Some("0x1234567890123456789012345678901234567890".to_string()),
-            to_address: None,
-            token_id: 1,
-            amount: large_amount.to_string(),
-            banking_hash: None,
-            batch_id: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
+        let mut order = create_test_order(
+            &Uuid::new_v4().to_string(),
+            OrderType::BridgeIn,
+            OrderStatus::Pending,
+            &large_amount.to_string()
+        );
+        order.from_address = Some("0x1234567890123456789012345678901234567890".to_string());
+        order.to_address = None;
+        order.banking_hash = None;
         
         // Should handle large amounts as strings
         insert_order(&pool, &order).await.unwrap();
