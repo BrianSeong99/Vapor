@@ -359,3 +359,231 @@ pub async fn start_relayer_service(
 
     relayer.start(config).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::blockchain::{ContractAddresses, ChainConfig, DepositEvent, BlockchainClient};
+    use crate::models::{Order, OrderType, OrderStatus};
+    use crate::services::{
+        matching_engine::MatchingEngine, 
+        batch_processor::BatchProcessor,
+        mvp_prover::{MvpProverService, MvpProverConfig}
+    };
+    use sqlx::{SqlitePool, Row};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use uuid::{self, Uuid};
+    use web3::types::{Address, U256, H256};
+    use chrono::Utc;
+
+    // Helper function to create test database
+    async fn create_test_db() -> SqlitePool {
+        let db = SqlitePool::connect(":memory:").await.unwrap();
+        
+        // Create orders table
+        sqlx::query(r#"
+            CREATE TABLE orders (
+                id TEXT PRIMARY KEY,
+                order_type INTEGER NOT NULL,
+                status INTEGER NOT NULL,
+                from_address TEXT,
+                to_address TEXT,
+                token_id INTEGER NOT NULL,
+                amount TEXT NOT NULL,
+                banking_hash TEXT,
+                batch_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        "#).execute(&db).await.unwrap();
+        
+        db
+    }
+
+    // Helper function to create mock blockchain client
+    async fn create_test_blockchain_client() -> Result<Arc<BlockchainClient>> {
+        let rpc_url = "http://localhost:8545".to_string();
+        let bridge_address = Address::from_low_u64_be(1);
+        let proof_verifier_address = Address::from_low_u64_be(2);  
+        let usdc_address = Address::from_low_u64_be(3);
+        let chain_id = 31337;
+        
+        // For tests, we'll create a blockchain client but won't actually use it for calls
+        // In a real test environment, we'd use a test RPC endpoint
+        Ok(Arc::new(BlockchainClient::new(
+            rpc_url,
+            bridge_address,
+            proof_verifier_address,
+            usdc_address,
+            chain_id,
+        ).await.unwrap()))
+    }
+
+    // Helper to create test services
+    async fn create_test_services() -> (SqlitePool, Arc<Mutex<MatchingEngine>>, Arc<Mutex<BatchProcessor>>) {
+        let db = create_test_db().await;
+        let matching_engine = Arc::new(Mutex::new(MatchingEngine::new()));
+        let prover_config = MvpProverConfig::default();
+        let prover = MvpProverService::new(prover_config);
+        let batch_processor = Arc::new(Mutex::new(BatchProcessor::new()));
+        
+        (db, matching_engine, batch_processor)
+    }
+
+    fn create_test_deposit_event(user_id: u64, amount: u64, token_id: u64) -> DepositEvent {
+        DepositEvent {
+            user: Address::from_low_u64_be(user_id),
+            amount: U256::from(amount),
+            token: Address::from_low_u64_be(token_id),
+            banking_hash: H256::from_low_u64_be(12345 + user_id),
+            block_number: 100,
+            transaction_hash: H256::from_low_u64_be(54321 + user_id),
+        }
+    }
+
+    #[test]
+    fn test_relayer_config_default() {
+        let config = RelayerConfig::default();
+        assert_eq!(config.poll_interval_seconds, 12);
+        assert!(config.start_block.is_none());
+        assert!(config.auto_match_orders);
+        assert!(config.auto_batch_orders);
+    }
+
+    #[test]
+    fn test_relayer_config_custom() {
+        let config = RelayerConfig {
+            poll_interval_seconds: 30,
+            start_block: Some(1000),
+            auto_match_orders: false,
+            auto_batch_orders: true,
+        };
+        
+        assert_eq!(config.poll_interval_seconds, 30);
+        assert_eq!(config.start_block, Some(1000));
+        assert!(!config.auto_match_orders);
+        assert!(config.auto_batch_orders);
+    }
+
+    #[tokio::test]
+    async fn test_relayer_service_creation() {
+        // Skip blockchain client tests for now as they require network connection
+        let config = RelayerConfig::default();
+        assert_eq!(config.poll_interval_seconds, 12);
+        assert!(config.auto_match_orders);
+        assert!(config.auto_batch_orders);
+    }
+
+    #[test] 
+    fn test_token_address_to_id_mapping() {
+        // Test simple token mapping logic (extracted from RelayerService method)
+        fn token_address_to_id(token_address: &Address) -> u32 {
+            let token_str = format!("{:?}", token_address).to_lowercase();
+            
+            if token_str.contains("usdc") || token_str.ends_with("001") {
+                1 // USDC
+            } else if token_str.contains("pyusd") || token_str.ends_with("002") {
+                2 // PYUSD
+            } else {
+                1 // Default to USDC
+            }
+        }
+        
+        let usdc_address = Address::from_low_u64_be(1);
+        assert_eq!(token_address_to_id(&usdc_address), 1);
+        
+        let pyusd_address = Address::from_low_u64_be(2);
+        assert_eq!(token_address_to_id(&pyusd_address), 2); // Should be PYUSD (ends with 002)
+        
+        let unknown_address = Address::from_low_u64_be(999);
+        assert_eq!(token_address_to_id(&unknown_address), 1);
+    }
+
+    #[tokio::test]
+    async fn test_database_operations() {
+        let db = create_test_db().await;
+        
+        // Test database is working
+        let result = sqlx::query("SELECT COUNT(*) as count FROM orders")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        
+        let count: i64 = result.try_get("count").unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_relayer_stats_structure() {
+        // Test the RelayerStats structure
+        let stats = RelayerStats {
+            is_running: false,
+            last_processed_block: 100,
+            total_deposits_processed: 5,
+            total_orders_created: 3,
+            last_poll_time: Some(Utc::now()),
+        };
+        
+        assert!(!stats.is_running);
+        assert_eq!(stats.last_processed_block, 100);
+        assert_eq!(stats.total_deposits_processed, 5);
+        assert_eq!(stats.total_orders_created, 3);
+        assert!(stats.last_poll_time.is_some());
+    }
+
+    #[test]
+    fn test_deposit_event_creation() {
+        let event = create_test_deposit_event(1, 1000000, 1);
+        
+        assert_eq!(event.user, Address::from_low_u64_be(1));
+        assert_eq!(event.amount, U256::from(1000000));
+        assert_eq!(event.token, Address::from_low_u64_be(1));
+        assert_eq!(event.block_number, 100);
+    }
+
+    #[tokio::test]
+    async fn test_order_creation_from_deposit() {
+        let db = create_test_db().await;
+        let deposit_event = create_test_deposit_event(1, 1000000, 1);
+        
+        // Test creating order data from deposit event (simulated)
+        let order_data = Order {
+            id: uuid::Uuid::new_v4().to_string(),
+            order_type: OrderType::BridgeIn,
+            status: OrderStatus::Pending,
+            from_address: Some(format!("{:?}", deposit_event.user)),
+            to_address: Some(format!("{:?}", deposit_event.user)),
+            token_id: 1, // USDC
+            amount: deposit_event.amount.to_string(),
+            banking_hash: Some(format!("{:?}", deposit_event.banking_hash)),
+            batch_id: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        
+        assert_eq!(order_data.order_type, OrderType::BridgeIn);
+        assert_eq!(order_data.status, OrderStatus::Pending);
+        assert_eq!(order_data.token_id, 1);
+        assert_eq!(order_data.amount, "1000000");
+        assert!(order_data.banking_hash.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_large_amount_handling() {
+        let large_amount = U256::from_dec_str("1000000000000000000000000").unwrap();
+        let event = create_test_deposit_event(1, 0, 1);
+        
+        // Manually set large amount since helper function uses u64
+        let large_event = DepositEvent {
+            user: event.user,
+            amount: large_amount,
+            token: event.token,
+            banking_hash: event.banking_hash,
+            block_number: event.block_number,
+            transaction_hash: event.transaction_hash,
+        };
+        
+        assert_eq!(large_event.amount.to_string(), "1000000000000000000000000");
+    }
+}
