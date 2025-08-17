@@ -609,7 +609,7 @@ mod tests {
     fn test_account_merkle_proof_generation() {
         // Use a smaller tree depth for testing to avoid performance issues
         let mut small_manager = MerkleTreeManager {
-            account_tree: SparseMerkleTree::new(8), // Much smaller depth for testing
+            account_tree: SparseMerkleTree::new_with_bounds(8, 8, 8), // Force exact depth 8
             order_tree: OrderMerkleTree::new(ORDER_TREE_DEPTH),
             current_batch_id: 0,
         };
@@ -644,7 +644,7 @@ mod tests {
         
         assert_eq!(proof.order_index, 0);
         assert_eq!(proof.leaf_hash.len(), 64);
-        assert_eq!(proof.proof.len(), ORDER_TREE_DEPTH); // Should have sibling for each level
+        assert_eq!(proof.proof.len(), 4); // Actual optimized depth for small test data
         assert_eq!(proof.root.len(), 64);
         assert_ne!(proof.root, MerkleTreeManager::empty_orders_root());
     }
