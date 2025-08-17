@@ -24,6 +24,7 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "chrono"
 # Crypto and blockchain
 ethers = "2.0"
 web3 = { version = "0.19", default-features = false, features = ["http-rustls-tls", "signing"] }
+rand = "0.8"
 
 # Merkle trees
 rs_merkle = "1.4"

@@ -1,9 +1,12 @@
 use crate::models::{Order, AccountState};
 use crate::merkle::MerkleTreeManager;
+use crate::services::mvp_prover::{MvpProverService, MvpProverConfig, ProofGenerationResult};
+use crate::blockchain::BlockchainClient;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tracing::{info, warn};
+use std::sync::Arc;
+use tracing::{info, warn, error};
 use chrono::{DateTime, Utc};
 
 /// Batch processor for collecting orders and generating Merkle proofs
@@ -12,16 +15,20 @@ pub struct BatchProcessor {
     /// Merkle tree manager for state and order trees
     pub tree_manager: MerkleTreeManager,
     /// Current batch being processed
-    pub current_batch: Option<Batch>,
+    pub current_batch: Option<ProcessingBatch>,
     /// Next batch ID to assign
     pub next_batch_id: u32,
     /// Account states (address -> AccountState)
     pub accounts: HashMap<String, AccountState>,
+    /// MVP prover service for generating mock proofs
+    pub prover: MvpProverService,
+    /// Optional blockchain client for submitting proofs
+    pub blockchain_client: Option<Arc<BlockchainClient>>,
 }
 
-/// A batch represents a collection of orders that transition the system state
+/// Internal batch state during processing
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Batch {
+pub struct ProcessingBatch {
     pub batch_id: u32,
     pub prev_batch_id: u32,
     pub prev_state_root: String,
@@ -47,12 +54,20 @@ pub struct BatchResult {
 
 impl BatchProcessor {
     pub fn new() -> Self {
+        let prover_config = MvpProverConfig::default();
         Self {
             tree_manager: MerkleTreeManager::new(),
             current_batch: None,
             next_batch_id: 1,
             accounts: HashMap::new(),
+            prover: MvpProverService::new(prover_config),
+            blockchain_client: None,
         }
+    }
+
+    pub fn with_blockchain_client(mut self, client: Arc<BlockchainClient>) -> Self {
+        self.blockchain_client = Some(client);
+        self
     }
 
     /// Start a new batch
@@ -77,7 +92,7 @@ impl BatchProcessor {
             self.tree_manager.get_orders_root()?
         };
 
-        let batch = Batch {
+        let batch = ProcessingBatch {
             batch_id,
             prev_batch_id,
             prev_state_root,
@@ -241,7 +256,7 @@ impl BatchProcessor {
     }
 
     /// Get current batch info
-    pub fn get_current_batch(&self) -> Option<&Batch> {
+    pub fn get_current_batch(&self) -> Option<&ProcessingBatch> {
         self.current_batch.as_ref()
     }
 
@@ -273,6 +288,98 @@ impl BatchProcessor {
 
         info!("Initialized account {} with {} of token {}", address, initial_balance, token_id);
         Ok(())
+    }
+
+    /// Generate proof for finalized batch and optionally submit to blockchain
+    pub async fn generate_and_submit_proof(&mut self, batch_id: u32) -> Result<ProofGenerationResult> {
+        info!("Starting proof generation and submission for batch {}", batch_id);
+
+        // Find the finalized batch
+        if let Some(ref batch) = self.current_batch {
+            if batch.batch_id != batch_id {
+                return Err(anyhow::anyhow!("Batch {} is not the current batch", batch_id));
+            }
+
+            if !batch.is_finalized {
+                return Err(anyhow::anyhow!("Batch {} is not finalized for proof generation", batch_id));
+            }
+
+            // Generate proof using MVP prover
+            let proof_result = self.prover.generate_proof_for_batch(
+                batch.batch_id,
+                &batch.prev_state_root,
+                &batch.prev_orders_root,
+                &batch.new_state_root,
+                &batch.new_orders_root,
+                &batch.orders,
+            ).await?;
+
+            if proof_result.success {
+                if let Some(ref proof) = proof_result.proof {
+                    info!("Proof generated successfully for batch {}", batch_id);
+                    
+                    // Submit proof to blockchain if client is available
+                    if let Some(ref blockchain_client) = self.blockchain_client {
+                        match self.submit_proof_to_blockchain(proof, batch).await {
+                            Ok(_) => {
+                                info!("Proof submitted to blockchain successfully for batch {}", batch_id);
+                            }
+                            Err(e) => {
+                                error!("Failed to submit proof to blockchain for batch {}: {}", batch_id, e);
+                                // Don't fail the entire operation, just log the error
+                            }
+                        }
+                    } else {
+                        warn!("No blockchain client available, skipping on-chain submission for batch {}", batch_id);
+                    }
+                } else {
+                    error!("Proof generation succeeded but no proof returned for batch {}", batch_id);
+                }
+            } else {
+                error!("Proof generation failed for batch {}: {:?}", batch_id, proof_result.error_message);
+            }
+
+            Ok(proof_result)
+        } else {
+            Err(anyhow::anyhow!("No current batch found"))
+        }
+    }
+
+    /// Submit proof to blockchain via smart contract
+    async fn submit_proof_to_blockchain(&self, proof: &crate::services::mvp_prover::MockProof, batch: &ProcessingBatch) -> Result<()> {
+        if let Some(ref blockchain_client) = self.blockchain_client {
+            let prev_state_root = crate::blockchain::hex_to_h256(&batch.prev_state_root)?;
+            let prev_orders_root = crate::blockchain::hex_to_h256(&batch.prev_orders_root)?;
+            let new_state_root = crate::blockchain::hex_to_h256(&batch.new_state_root)?;
+            let new_orders_root = crate::blockchain::hex_to_h256(&batch.new_orders_root)?;
+            let proof_bytes = web3::types::Bytes(proof.to_submission_bytes());
+
+            let result = blockchain_client.submit_proof(
+                batch.batch_id.saturating_sub(1), // prev_batch_id
+                batch.batch_id,
+                prev_state_root,
+                prev_orders_root,
+                new_state_root,
+                new_orders_root,
+                proof_bytes,
+            ).await?;
+
+            info!("Proof submission result: {:?}", result);
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("No blockchain client available"))
+        }
+    }
+
+    /// Update MVP prover configuration
+    pub fn update_prover_config(&mut self, config: MvpProverConfig) {
+        self.prover.update_config(config);
+        info!("Updated MVP prover configuration");
+    }
+
+    /// Get prover statistics
+    pub fn get_prover_stats(&self) -> crate::services::mvp_prover::ProverStats {
+        self.prover.get_stats()
     }
 }
 

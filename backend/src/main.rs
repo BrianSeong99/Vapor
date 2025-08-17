@@ -54,16 +54,25 @@ async fn main() -> anyhow::Result<()> {
     // Store port before moving config
     let port = config.api.port;
 
-    // Initialize blockchain client (for MVP, we'll create a simple mock)
-    // In production, you'd initialize this with real contract addresses
-    // let blockchain_client = blockchain::BlockchainClient::new(...).await?;
-
-    // For MVP, we'll initialize the app state without blockchain client
-    // The relayer will be disabled until blockchain client is properly configured
-    let app_state = api::AppState::new(config, db);
-
-    // TODO: Add blockchain client initialization when contract addresses are available
-    // app_state = app_state.with_blockchain_client(blockchain_client);
+    // Initialize blockchain client for MVP
+    info!("Initializing blockchain client...");
+    
+    let bridge_address = config.blockchain.contract_address.parse()
+        .map_err(|_| anyhow::anyhow!("Invalid CONTRACT_ADDRESS format"))?;
+    
+    // For MVP, use a placeholder USDC address (will be set during contract deployment)
+    let usdc_address = "0x0000000000000000000000000000000000000000".parse()
+        .map_err(|_| anyhow::anyhow!("Invalid USDC address format"))?;
+    
+    let blockchain_client = crate::blockchain::BlockchainClient::new(
+        config.blockchain.rpc_url.clone(),
+        bridge_address,
+        usdc_address,
+        1, // Chain ID (anvil default)
+    ).await?;
+    
+    let mut app_state = api::AppState::new(config, db);
+    app_state = app_state.with_blockchain_client(blockchain_client);
 
     // TODO: Initialize and start relayer service
     // if let Some(blockchain_client) = &app_state.blockchain_client {

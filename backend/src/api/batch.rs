@@ -102,64 +102,45 @@ pub async fn prove_batch(
         }
     };
     
-    drop(processor); // Release the lock
+    info!("Batch {} finalized, starting MVP proof generation", batch_result.batch_id);
     
-    info!("Batch {} finalized, starting proof generation", batch_result.batch_id);
-    
-    // TODO: Generate SP1 proof
-    // For MVP, we'll simulate this process
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-    
-    // Submit proof to blockchain if client is available
-    if let Some(blockchain_client) = &app_state.blockchain_client {
-        let prev_state_root = crate::blockchain::hex_to_h256(&batch_result.prev_state_root)
-            .unwrap_or_default();
-        let prev_orders_root = crate::blockchain::hex_to_h256(&batch_result.prev_orders_root)
-            .unwrap_or_default();
-        let new_state_root = crate::blockchain::hex_to_h256(&batch_result.new_state_root)
-            .unwrap_or_default();
-        let new_orders_root = crate::blockchain::hex_to_h256(&batch_result.new_orders_root)
-            .unwrap_or_default();
-        
-        let proof_bytes = web3::types::Bytes::from(vec![0u8; 32]); // Placeholder proof
-        
-        match blockchain_client.submit_proof(
-            batch_result.batch_id,
-            batch_result.batch_id - 1,
-            prev_state_root,
-            prev_orders_root,
-            new_state_root,
-            new_orders_root,
-            proof_bytes,
-        ).await {
-            Ok(submission_result) => {
-                info!("Proof submitted to blockchain: {:?}", submission_result.transaction_hash);
+    // Generate proof using MVP prover and submit to blockchain
+    match processor.generate_and_submit_proof(batch_result.batch_id).await {
+        Ok(proof_result) => {
+            if proof_result.success {
+                info!("Proof generated and submitted successfully for batch {}", batch_result.batch_id);
                 Ok(Json(json!({
                     "status": "success",
                     "batch_id": batch_result.batch_id,
                     "orders_count": batch_result.orders_count,
-                    "transaction_hash": format!("{:?}", submission_result.transaction_hash),
-                    "gas_used": submission_result.gas_used.map(|g| g.as_u64()),
-                    "message": "Batch proven and submitted to blockchain"
+                    "proof_generated": true,
+                    "generation_time_ms": proof_result.generation_time_ms,
+                    "submitted_to_blockchain": app_state.blockchain_client.is_some(),
+                    "proof_data": proof_result.proof,
+                    "message": "Batch proven and submitted successfully using MVP prover"
                 })))
-            }
-            Err(e) => {
-                error!("Failed to submit proof to blockchain: {}", e);
+            } else {
+                warn!("Proof generation failed for batch {}: {:?}", batch_result.batch_id, proof_result.error_message);
                 Ok(Json(json!({
-                    "status": "partial_success",
+                    "status": "error",
                     "batch_id": batch_result.batch_id,
-                    "message": format!("Batch proven but blockchain submission failed: {}", e)
+                    "proof_generated": false,
+                    "error": proof_result.error_message.unwrap_or_else(|| "Unknown error".to_string()),
+                    "generation_time_ms": proof_result.generation_time_ms,
+                    "message": "Batch proof generation failed"
                 })))
             }
         }
-    } else {
-        warn!("No blockchain client configured, skipping on-chain submission");
-        Ok(Json(json!({
-            "status": "success",
-            "batch_id": batch_result.batch_id,
-            "orders_count": batch_result.orders_count,
-            "message": "Batch proven (blockchain submission skipped - no client configured)"
-        })))
+        Err(e) => {
+            error!("Failed to generate proof for batch {}: {}", batch_result.batch_id, e);
+            Ok(Json(json!({
+                "status": "error",
+                "batch_id": batch_result.batch_id,
+                "proof_generated": false,
+                "error": e.to_string(),
+                "message": "Failed to generate proof for batch"
+            })))
+        }
     }
 }
 
