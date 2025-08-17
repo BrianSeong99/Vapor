@@ -7,9 +7,9 @@ import { parseUnits, formatUnits, Address } from 'viem';
 import { ERC20_ABI, VAPOR_BRIDGE_ABI, getPyusdAddress, getVaporBridgeAddress } from '../lib/contracts';
 
 export function usePyusd() {
-  const { ready, authenticated, user } = usePrivy();
+  const { ready, authenticated } = usePrivy();
   const { wallets } = useWallets();
-  const [chainId, setChainId] = useState<number>(11155111); // Default to Sepolia
+  const [chainId] = useState<number>(11155111); // Default to Sepolia
   
   // Get the user's embedded wallet
   const embeddedWallet = wallets.find(wallet => wallet.walletClientType === 'privy');

@@ -1,22 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import { usePyusd } from '../hooks/usePyusd';
 
 export default function SellerInputPage() {
   const router = useRouter();
-  const { login, logout, authenticated, user } = usePrivy();
+  const { login, logout, authenticated } = usePrivy();
   const { 
     userAddress, 
     formattedBalance, 
     needsApproval, 
     approvePyusd, 
     depositPyusd,
-    isApproveLoading,
     isApproveSuccess,
-    isDepositLoading,
     isDepositSuccess
   } = usePyusd();
 
@@ -223,9 +221,9 @@ export default function SellerInputPage() {
           </div>
         </div>
 
-        {/* Connect Wallet Button */}
+        {/* Action Button */}
         <div className="pb-6">
-          {!isConnected ? (
+          {!authenticated ? (
             <button
               onClick={handleConnectWallet}
               className="w-full py-4 bg-[#8BC34A] hover:bg-[#689F38] text-white font-semibold text-lg rounded-lg transition-colors"
@@ -233,12 +231,48 @@ export default function SellerInputPage() {
               CONNECT WALLET
             </button>
           ) : (
-            <button
-              onClick={handleSubmit}
-              className="w-full py-4 bg-[#8BC34A] hover:bg-[#689F38] text-white font-semibold text-lg rounded-lg transition-colors"
-            >
-              CONTINUE
-            </button>
+            <div className="space-y-3">
+              {authenticated && userAddress && (
+                <div className="flex justify-between items-center text-sm text-gray-600">
+                  <span>Available: {formattedBalance} PYUSD</span>
+                  <button
+                    onClick={logout}
+                    className="text-red-600 hover:text-red-800 text-xs underline"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              )}
+              
+              <button
+                onClick={handleSubmit}
+                disabled={isProcessing || !authenticated || !userAddress}
+                className={`w-full py-4 font-semibold text-lg rounded-lg transition-colors ${
+                  isProcessing || !authenticated || !userAddress
+                    ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                    : 'bg-[#8BC34A] hover:bg-[#689F38] text-white'
+                }`}
+              >
+                {isProcessing ? (
+                  <div className="flex items-center justify-center space-x-2">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    <span>
+                      {step === 'approve' && 'APPROVING...'}
+                      {step === 'deposit' && 'DEPOSITING...'}
+                      {step === 'success' && 'SUCCESS!'}
+                    </span>
+                  </div>
+                ) : (
+                  'DEPOSIT PYUSD'
+                )}
+              </button>
+              
+              {authenticated && (
+                <p className="text-xs text-gray-500 text-center">
+                  This will deposit your PYUSD to the Vapor Bridge contract and create an off-ramp order.
+                </p>
+              )}
+            </div>
           )}
         </div>
       </div>

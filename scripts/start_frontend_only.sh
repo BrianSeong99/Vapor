@@ -53,5 +53,5 @@ log_info "🔗 Make sure Anvil is running on: http://localhost:8545"
 echo ""
 sleep 2
 
-# Start Next.js in development mode (foreground)
+# Start Next.js in development mode (foreground) without Turbopack
 npm run dev
