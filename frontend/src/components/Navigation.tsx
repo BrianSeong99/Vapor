@@ -9,7 +9,7 @@ import { fundWalletDirect } from '../utils/fundWallet';
 export default function Navigation() {
   const router = useRouter();
   const { authenticated, user, login, logout } = usePrivy();
-  const { userAddress, formattedBalance, refetchBalance } = usePyusd();
+  const { userAddress, formattedBalance, refetchBalance, chainId, targetChainId } = usePyusd();
   const [showWallet, setShowWallet] = useState(false);
 
   const handleFundWallet = async () => {
@@ -104,6 +104,18 @@ export default function Navigation() {
                 
                 {showWallet && (
                   <div className="bg-black bg-opacity-70 rounded p-2 space-y-1">
+                    <div className="text-white text-xs">
+                      <div className="text-gray-300">Network:</div>
+                      <div className={`text-xs font-bold ${chainId === targetChainId ? 'text-green-400' : 'text-red-400'}`}>
+                        Chain {chainId} {chainId === targetChainId ? '✅' : '❌'}
+                      </div>
+                      {chainId !== targetChainId && (
+                        <div className="text-xs text-yellow-400">
+                          Need Chain {targetChainId} (Anvil)
+                        </div>
+                      )}
+                    </div>
+                    
                     <div className="text-white text-xs">
                       <div className="text-gray-300">Address:</div>
                       <div className="font-mono text-xs break-all">

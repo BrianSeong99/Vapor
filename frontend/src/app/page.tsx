@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import { usePyusd } from '../hooks/usePyusd';
@@ -10,25 +10,18 @@ export default function SellerInputPage() {
   const { login, logout, authenticated } = usePrivy();
   const { 
     userAddress, 
-    formattedBalance, 
-    needsApproval, 
-    approvePyusd, 
-    depositPyusd,
-    isApproveSuccess,
-    isDepositSuccess
+    formattedBalance
   } = usePyusd();
 
   const [amount, setAmount] = useState('1000');
   const [bankAccount, setBankAccount] = useState('841273-1283712');
   const [service, setService] = useState('PayPal Hong Kong');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [step, setStep] = useState<'input' | 'approve' | 'deposit' | 'success'>('input');
 
   const handleConnectWallet = () => {
     login();
   };
 
-  const handleSubmit = async () => {
+  const handleContinue = () => {
     if (!authenticated || !userAddress) {
       handleConnectWallet();
       return;
@@ -43,58 +36,14 @@ export default function SellerInputPage() {
       return;
     }
 
-    // Create order hash (simplified for demo)
-    const orderData = {
-      amount: numAmount,
+    // Navigate to review/confirm page with the form data
+    const params = new URLSearchParams({
+      amount: amount.replace(/,/g, ''),
       bankAccount,
       service,
-      userAddress,
-      timestamp: Date.now()
-    };
+    });
     
-    const orderHash = `0x${Array.from(new TextEncoder().encode(JSON.stringify(orderData)))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('')
-      .slice(0, 64)
-      .padEnd(64, '0')}` as `0x${string}`;
-
-    try {
-      setIsProcessing(true);
-      
-      // Step 1: Check if approval is needed
-      if (needsApproval(amount.replace(/,/g, ''))) {
-        setStep('approve');
-        await approvePyusd(amount.replace(/,/g, ''));
-        
-        // Wait for approval to complete
-        while (!isApproveSuccess) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-
-      // Step 2: Deposit PYUSD
-      setStep('deposit');
-      await depositPyusd(amount.replace(/,/g, ''), orderHash);
-      
-      // Wait for deposit to complete
-      while (!isDepositSuccess) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-
-      setStep('success');
-      
-      // Redirect after success
-      setTimeout(() => {
-        router.push('/confirm');
-      }, 2000);
-
-    } catch (error) {
-      console.error('Transaction failed:', error);
-      alert('Transaction failed. Please try again.');
-      setStep('input');
-    } finally {
-      setIsProcessing(false);
-    }
+    router.push(`/confirm?${params.toString()}`);
   };
 
   return (
@@ -123,26 +72,7 @@ export default function SellerInputPage() {
             </div>
           )}
           
-          {/* Transaction Progress */}
-          {isProcessing && (
-            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center space-x-3">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                <div>
-                  <p className="text-sm font-medium text-blue-800">
-                    {step === 'approve' && 'Approving PYUSD spending...'}
-                    {step === 'deposit' && 'Depositing PYUSD to Vapor Bridge...'}
-                    {step === 'success' && 'Transaction completed successfully!'}
-                  </p>
-                  <p className="text-xs text-blue-600">
-                    {step === 'approve' && 'Please confirm the approval transaction in your wallet'}
-                    {step === 'deposit' && 'Please confirm the deposit transaction in your wallet'}
-                    {step === 'success' && 'Redirecting to confirmation page...'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+
         </div>
 
         {/* Form */}
@@ -245,31 +175,20 @@ export default function SellerInputPage() {
               )}
               
               <button
-                onClick={handleSubmit}
-                disabled={isProcessing || !authenticated || !userAddress}
+                onClick={handleContinue}
+                disabled={!authenticated || !userAddress}
                 className={`w-full py-4 font-semibold text-lg rounded-lg transition-colors ${
-                  isProcessing || !authenticated || !userAddress
+                  !authenticated || !userAddress
                     ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
                     : 'bg-[#8BC34A] hover:bg-[#689F38] text-white'
                 }`}
               >
-                {isProcessing ? (
-                  <div className="flex items-center justify-center space-x-2">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    <span>
-                      {step === 'approve' && 'APPROVING...'}
-                      {step === 'deposit' && 'DEPOSITING...'}
-                      {step === 'success' && 'SUCCESS!'}
-                    </span>
-                  </div>
-                ) : (
-                  'DEPOSIT PYUSD'
-                )}
+                CONTINUE
               </button>
               
               {authenticated && (
                 <p className="text-xs text-gray-500 text-center">
-                  This will deposit your PYUSD to the Vapor Bridge contract and create an off-ramp order.
+                  Review your withdrawal details on the next page before confirming.
                 </p>
               )}
             </div>

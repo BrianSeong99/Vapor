@@ -141,13 +141,20 @@ EOF
     
     for i in "${!TEST_ACCOUNTS[@]}"; do
         local address=${TEST_ACCOUNTS[$i]}
-        local amount=$((1000 * 10**6)) # 1000 USDC
+        local usdc_amount=$((1000 * 10**6)) # 1000 USDC
+        local eth_amount="10000000000000000000" # 10 ETH in wei
         
-        cast send $USDC_ADDRESS "mint(address,uint256)" $address $amount \
+        # Send ETH for gas fees
+        cast send $address --value $eth_amount \
             --rpc-url http://localhost:$ANVIL_PORT \
             --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 > /dev/null
         
-        log_info "  Account $i ($address): 1000 USDC"
+        # Mint USDC tokens
+        cast send $USDC_ADDRESS "mint(address,uint256)" $address $usdc_amount \
+            --rpc-url http://localhost:$ANVIL_PORT \
+            --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 > /dev/null
+        
+        log_info "  Account $i ($address): 10 ETH + 1000 USDC"
     done
     
     log_success "Test accounts funded with USDC"
