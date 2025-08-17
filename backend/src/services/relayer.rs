@@ -44,7 +44,7 @@ pub struct RelayerConfig {
 impl Default for RelayerConfig {
     fn default() -> Self {
         Self {
-            poll_interval_seconds: 12, // ~1 block on Ethereum
+            poll_interval_seconds: 12, // Fast polling for development
             start_block: None, // Start from latest block
             auto_match_orders: true,
             auto_batch_orders: true,

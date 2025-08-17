@@ -5,7 +5,7 @@ interface PaymentModalProps {
   onClose: () => void;
   onSendPayment: () => void;
   onPaymentSent: () => void;
-  orderStatus: 'available' | 'locked' | 'payment_sent' | 'completed';
+  orderStatus: 'Discovery' | 'Locked' | 'MarkPaid' | 'Settled' | 'available' | 'locked' | 'payment_sent' | 'completed';
 }
 
 export default function PaymentModal({ 
@@ -17,7 +17,7 @@ export default function PaymentModal({
 }: PaymentModalProps) {
   if (!isOpen) return null;
 
-  const isPaymentSentStage = orderStatus === 'locked';
+  const isPaymentSentStage = orderStatus === 'locked' || orderStatus === 'Locked';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">

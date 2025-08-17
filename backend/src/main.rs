@@ -3,8 +3,10 @@ use axum::{
     Router,
 };
 use std::net::SocketAddr;
+
 use tower_http::cors::CorsLayer;
-use tracing::{info, Level};
+use tracing::{info, error, warn, Level};
+use chrono;
 use tracing_subscriber::FmtSubscriber;
 
 mod api;
@@ -77,35 +79,68 @@ async fn main() -> anyhow::Result<()> {
     let mut app_state = api::AppState::new(config, db);
     app_state = app_state.with_blockchain_client(blockchain_client);
 
-    // TODO: Initialize and start relayer service
-    // if let Some(blockchain_client) = &app_state.blockchain_client {
-    //     let relayer_config = services::relayer::RelayerConfig::default();
-    //     let relayer = services::relayer::RelayerService::new(
-    //         blockchain_client.clone(),
-    //         app_state.db.clone(),
-    //         app_state.matching_engine.clone(),
-    //         app_state.batch_processor.clone(),
-    //         relayer_config.clone(),
-    //     ).await?;
-    //     
-    //     app_state = app_state.with_relayer_service(relayer).await;
-    //     
-    //     // Start relayer service in background
-    //     let relayer_service = app_state.relayer_service.clone();
-    //     tokio::spawn(async move {
-    //         if let Some(relayer_service) = relayer_service {
-    //             if let Ok(mut relayer) = relayer_service.try_lock() {
-    //                 if let Err(e) = relayer.start(relayer_config).await {
-    //                     error!("Relayer service failed: {}", e);
-    //                 }
-    //             }
-    //         }
-    //     });
-    //     
-    //     info!("Relayer service started in background");
-    // } else {
-    //     warn!("Blockchain client not configured, relayer service disabled");
-    // }
+    // Initialize and start relayer service
+    if let Some(blockchain_client) = &app_state.blockchain_client {
+        let relayer_config = services::relayer::RelayerConfig::default();
+        let relayer = services::relayer::RelayerService::new(
+            blockchain_client.clone(),
+            app_state.db.clone(),
+            app_state.matching_engine.clone(),
+            app_state.batch_processor.clone(),
+            relayer_config.clone(),
+        ).await?;
+        
+        app_state = app_state.with_relayer_service(relayer).await;
+        
+        // Start relayer service in background
+        let relayer_service = app_state.relayer_service.clone();
+        tokio::spawn(async move {
+            if let Some(relayer_service) = relayer_service {
+                loop {
+                    if let Ok(mut relayer) = relayer_service.try_lock() {
+                        if let Err(e) = relayer.start(relayer_config.clone()).await {
+                            error!("Relayer service failed: {}", e);
+                        }
+                    }
+                    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                }
+            }
+        });
+        
+        info!("Relayer service started in background");
+    } else {
+        warn!("Blockchain client not configured, relayer service disabled");
+    }
+
+    // Auto-discovery service: Automatically move Pending orders to Discovery
+    let discovery_db = app_state.db.clone();
+    tokio::spawn(async move {
+        loop {
+            // Wait 5 seconds between checks
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            
+            // Get all pending orders and move them to discovery
+            let query = "UPDATE orders SET status = $1, updated_at = $2 WHERE status = $3";
+            match sqlx::query(query)
+                .bind(crate::models::OrderStatus::Discovery as i32)
+                .bind(chrono::Utc::now())
+                .bind(crate::models::OrderStatus::Pending as i32)
+                .execute(&discovery_db)
+                .await
+            {
+                Ok(result) => {
+                    if result.rows_affected() > 0 {
+                        info!("Auto-discovery: Moved {} orders from Pending to Discovery", result.rows_affected());
+                    }
+                }
+                Err(e) => {
+                    error!("Auto-discovery failed: {}", e);
+                }
+            }
+        }
+    });
+    
+    info!("Auto-discovery service started - will move Pending orders to Discovery every 5 seconds");
 
     // Build our application with routes
     let app = Router::new()
