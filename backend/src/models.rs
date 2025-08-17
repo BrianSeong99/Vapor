@@ -179,6 +179,60 @@ pub struct FillerInfo {
     pub locked_amount: String,
 }
 
+/// Filler balance information
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FillerBalance {
+    pub filler_id: String,
+    pub total_balance: String,
+    pub available_balance: String, // Total - locked amounts
+    pub locked_balance: String,
+    pub completed_jobs: u32,
+    pub wallets: Vec<FillerWallet>,
+}
+
+/// Individual wallet for a filler
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FillerWallet {
+    pub address: String,
+    pub balance: String,
+    pub percentage: f32, // What percentage of total balance
+}
+
+/// Claim request for multiple wallets
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClaimRequest {
+    pub filler_id: String,
+    pub claims: Vec<WalletClaim>,
+}
+
+/// Individual wallet claim
+#[derive(Debug, Serialize, Deserialize)]
+pub struct WalletClaim {
+    pub wallet_address: String,
+    pub amount: String,
+    pub destination_address: String, // Where to send the claimed tokens
+}
+
+/// Claim response
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClaimResponse {
+    pub transaction_hash: Option<String>,
+    pub batch_id: u32,
+    pub total_claimed: String,
+    pub claims_processed: Vec<ProcessedClaim>,
+}
+
+/// Individual processed claim
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProcessedClaim {
+    pub wallet_address: String,
+    pub amount: String,
+    pub destination_address: String,
+    pub merkle_proof: Vec<String>,
+    pub success: bool,
+    pub error: Option<String>,
+}
+
 impl Order {
     pub fn new(req: CreateOrderRequest) -> Self {
         Self {

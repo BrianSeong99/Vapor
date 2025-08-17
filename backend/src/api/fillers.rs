@@ -10,8 +10,11 @@ use sqlx::Row;
 use super::AppState;
 use crate::models::{
     Order, OrderResponse, OrderType, OrderStatus, 
-    LockOrderRequest, SubmitPaymentProofRequest
+    LockOrderRequest, SubmitPaymentProofRequest,
+    FillerBalance, ClaimRequest, ClaimResponse, ProcessedClaim, WalletClaim,
 };
+// TODO: Fix database helpers import issue
+// use crate::database::helpers::{get_filler_balance, upsert_filler_balance, add_filler_wallet, insert_claim};
 
 #[derive(Debug, Deserialize)]
 pub struct FillerQuery {
@@ -226,4 +229,177 @@ pub async fn submit_payment_proof(
 
     info!("Payment proof submitted for order {}", order_id);
     Ok(Json(order_response))
+}
+
+/// Get filler balance (GET /fillers/:filler_id/balance)
+pub async fn get_filler_balance_api(
+    Path(filler_id): Path<String>,
+    State(_app_state): State<AppState>,
+) -> Result<Json<FillerBalance>, StatusCode> {
+    info!("Getting balance for filler {}", filler_id);
+
+    // TODO: Implement actual database lookup once import issue is resolved
+    // For now, return a mock balance with some realistic data
+    let balance = FillerBalance {
+        filler_id: filler_id.clone(),
+        total_balance: "150000000000000000000000".to_string(), // 150k USDT
+        available_balance: "120000000000000000000000".to_string(), // 120k USDT available
+        locked_balance: "30000000000000000000000".to_string(), // 30k USDT locked
+        completed_jobs: 2,
+        wallets: vec![
+            crate::models::FillerWallet {
+                address: "0X8aj81j2gasjd81as...".to_string(),
+                balance: "96000000000000000000000".to_string(), // 96k USDT (32% of total)
+                percentage: 32.0,
+            },
+            crate::models::FillerWallet {
+                address: "0X8aj81j2gasjd81as...".to_string(),
+                balance: "54000000000000000000000".to_string(), // 54k USDT (68% of total)  
+                percentage: 68.0,
+            },
+        ],
+    };
+
+    info!("Returning mock balance for filler {}: total={}, available={}", 
+          filler_id, balance.total_balance, balance.available_balance);
+    Ok(Json(balance))
+}
+
+/// Add wallet to filler (POST /fillers/:filler_id/wallets)
+#[derive(Debug, Deserialize)]
+pub struct AddWalletRequest {
+    pub wallet_address: String,
+    pub balance: Option<String>,
+}
+
+pub async fn add_wallet_to_filler(
+    Path(filler_id): Path<String>,
+    State(_app_state): State<AppState>,
+    Json(req): Json<AddWalletRequest>,
+) -> Result<Json<FillerBalance>, StatusCode> {
+    info!("Adding wallet {} to filler {}", req.wallet_address, filler_id);
+
+    // TODO: Implement actual database storage once import issue is resolved
+    // For now, return a mock updated balance
+    let updated_balance = FillerBalance {
+        filler_id: filler_id.clone(),
+        total_balance: "150000000000000000000000".to_string(),
+        available_balance: "120000000000000000000000".to_string(),
+        locked_balance: "30000000000000000000000".to_string(),
+        completed_jobs: 2,
+        wallets: vec![
+            crate::models::FillerWallet {
+                address: req.wallet_address.clone(),
+                balance: req.balance.unwrap_or_else(|| "0".to_string()),
+                percentage: 0.0,
+            },
+        ],
+    };
+
+    info!("Mock: Added wallet {} to filler {}", req.wallet_address, filler_id);
+    Ok(Json(updated_balance))
+}
+
+/// Claim tokens from multiple wallets (POST /fillers/claim)
+pub async fn claim_tokens(
+    State(_app_state): State<AppState>,
+    Json(req): Json<ClaimRequest>,
+) -> Result<Json<ClaimResponse>, StatusCode> {
+    info!("Processing claim request for filler {} with {} claims", 
+          req.filler_id, req.claims.len());
+
+    // TODO: Implement actual validation and database operations once import issue is resolved
+    let mut processed_claims = Vec::new();
+    let mut total_claimed = 0u64;
+
+    for claim in &req.claims {
+        let claim_amount: u64 = claim.amount.parse().map_err(|_| {
+            error!("Invalid claim amount: {}", claim.amount);
+            StatusCode::BAD_REQUEST
+        })?;
+
+        // Create bridge-out order for this claim
+        let bridge_out_order = create_bridge_out_order(
+            &claim.wallet_address,
+            &claim.destination_address,
+            &claim.amount,
+        );
+
+        // Generate merkle proof (this would integrate with the actual merkle tree)
+        let merkle_proof = generate_mock_merkle_proof(&bridge_out_order);
+
+        processed_claims.push(ProcessedClaim {
+            wallet_address: claim.wallet_address.clone(),
+            amount: claim.amount.clone(),
+            destination_address: claim.destination_address.clone(),
+            merkle_proof,
+            success: true,
+            error: None,
+        });
+
+        total_claimed += claim_amount;
+    }
+
+    // TODO: Submit batch claim to smart contract
+    // This would involve calling the smart contract's batch claim function
+    let transaction_hash = submit_batch_claim_to_contract(&processed_claims).await;
+
+    let response = ClaimResponse {
+        transaction_hash,
+        batch_id: 1, // TODO: Use actual batch ID from blockchain
+        total_claimed: total_claimed.to_string(),
+        claims_processed: processed_claims,
+    };
+
+    info!("Mock: Processed {} claims for filler {}, total claimed: {}", 
+          req.claims.len(), req.filler_id, total_claimed);
+
+    Ok(Json(response))
+}
+
+/// Helper function to create a bridge-out order
+fn create_bridge_out_order(
+    from_address: &str, 
+    to_address: &str, 
+    amount: &str
+) -> BridgeOutOrder {
+    BridgeOutOrder {
+        from_address: from_address.to_string(),
+        to_address: to_address.to_string(),
+        amount: amount.to_string(),
+        token_id: 1, // USDC
+    }
+}
+
+/// Temporary struct for bridge-out orders
+#[derive(Debug)]
+struct BridgeOutOrder {
+    from_address: String,
+    to_address: String,
+    amount: String,
+    token_id: u32,
+}
+
+/// Generate mock merkle proof for testing
+fn generate_mock_merkle_proof(order: &BridgeOutOrder) -> Vec<String> {
+    // This is a mock implementation
+    // In reality, this would generate the actual merkle proof
+    vec![
+        format!("0x{:064x}", 1), // Mock proof element 1
+        format!("0x{:064x}", 2), // Mock proof element 2
+        format!("0x{:064x}", 3), // Mock proof element 3
+    ]
+}
+
+/// Submit batch claim to smart contract (mock implementation)
+async fn submit_batch_claim_to_contract(claims: &[ProcessedClaim]) -> Option<String> {
+    // This is a mock implementation
+    // In reality, this would:
+    // 1. Create the batch claim transaction
+    // 2. Generate the merkle root for all claims
+    // 3. Submit to the smart contract
+    // 4. Return the transaction hash
+    
+    info!("Mock: Submitting {} claims to smart contract", claims.len());
+    Some("0x1234567890abcdef1234567890abcdef12345678".to_string())
 }
