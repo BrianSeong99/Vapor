@@ -46,16 +46,54 @@ export default function ConfirmPage() {
     }
   }, [isApproveSuccess, step, currentBankingHash, amount, depositPyusd]);
 
-  // Handle deposit success - show success and redirect
+  // Handle deposit success - create order and redirect
   useEffect(() => {
-    if (isDepositSuccess && step === 'deposit') {
-      console.log('Deposit successful');
+    if (isDepositSuccess && step === 'deposit' && currentBankingHash) {
+      console.log('Deposit successful, creating order');
       setStep('success');
-      setTimeout(() => {
-        router.push('/status');
-      }, 2000);
+      createOrder();
     }
-  }, [isDepositSuccess, step, router]);
+  }, [isDepositSuccess, step, currentBankingHash]);
+
+  // Create order in backend after successful deposit
+  const createOrder = async () => {
+    try {
+      const orderData = {
+        order_type: 'BridgeIn',
+        from_address: userAddress,
+        to_address: userAddress,
+        token_id: 2, // PYUSD token ID
+        amount: amount,
+        bank_account: bankAccount,
+        bank_service: service,
+        banking_hash: currentBankingHash
+      };
+
+      const response = await fetch('http://localhost:3000/api/v1/orders', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(orderData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create order');
+      }
+
+      const order = await response.json();
+      console.log('Order created:', order);
+
+      // Redirect to status page with order ID
+      setTimeout(() => {
+        router.push(`/status?orderId=${order.id}`);
+      }, 2000);
+
+    } catch (error) {
+      console.error('Failed to create order:', error);
+      alert('Order creation failed. Please contact support.');
+    }
+  };
 
   // Reset processing state when transactions complete or fail
   useEffect(() => {
