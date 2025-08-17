@@ -248,55 +248,170 @@ impl MockProof {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{OrderType, OrderStatus, Batch, BatchStatus};
+    use crate::models::{OrderType, OrderStatus};
     use uuid::Uuid;
+    use std::time::Instant;
+
+    fn create_test_order(id: &str, order_type: OrderType) -> Order {
+        Order {
+            id: id.to_string(),
+            order_type,
+            status: OrderStatus::Pending,
+            from_address: Some("0x1234567890123456789012345678901234567890".to_string()),
+            to_address: Some("0x0987654321098765432109876543210987654321".to_string()),
+            token_id: 1,
+            amount: "1000000000000000000".to_string(), // 1 ETH
+            banking_hash: Some(format!("banking_hash_{}", id)),
+            batch_id: Some(1),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn test_mvp_prover_config_default() {
+        let config = MvpProverConfig::default();
+        assert_eq!(config.generation_delay_ms, 2000);
+        assert!(!config.simulate_failures);
+        assert_eq!(config.failure_rate, 0.1);
+    }
+
+    #[test]
+    fn test_mvp_prover_creation() {
+        let config = MvpProverConfig {
+            generation_delay_ms: 100,
+            simulate_failures: false,
+            failure_rate: 0.0,
+        };
+        
+        let prover = MvpProverService::new(config.clone());
+        assert_eq!(prover.config.generation_delay_ms, 100);
+        assert!(!prover.config.simulate_failures);
+    }
 
     #[tokio::test]
-    async fn test_mock_proof_generation() {
+    async fn test_basic_proof_generation() {
         let config = MvpProverConfig {
-            generation_delay_ms: 10, // Fast for testing
+            generation_delay_ms: 1, // Very fast for testing
             simulate_failures: false,
             failure_rate: 0.0,
         };
         
         let prover = MvpProverService::new(config);
         
-        let orders = vec![Order {
-            id: Uuid::new_v4().to_string(),
-            order_type: OrderType::BridgeIn,
-            status: OrderStatus::Pending,
-            from_address: Some("0x123".to_string()),
-            to_address: Some("0x456".to_string()),
-            token_id: 1,
-            amount: "1000".to_string(),
-            banking_hash: Some("hash123".to_string()),
-            batch_id: Some(1),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        }];
+        let orders = vec![create_test_order("order_1", OrderType::BridgeIn)];
 
         let result = prover.generate_proof_for_batch(
             1,
-            "0x1111",
-            "0x2222",
-            "0x3333",
-            "0x4444",
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222222222222222222222222222",
+            "0x3333333333333333333333333333333333333333333333333333333333333333",
+            "0x4444444444444444444444444444444444444444444444444444444444444444",
             &orders,
+        ).await.unwrap();
+
+        assert!(result.success);
+        assert!(result.proof.is_some());
+        assert!(result.error_message.is_none());
+        assert!(result.generation_time_ms >= 1);
+        
+        let proof = result.proof.unwrap();
+        assert_eq!(proof.batch_id, 1);
+        assert_eq!(proof.orders_count, 1);
+        assert_eq!(proof.prev_state_root, "0x1111111111111111111111111111111111111111111111111111111111111111");
+        assert_eq!(proof.new_state_root, "0x3333333333333333333333333333333333333333333333333333333333333333");
+    }
+
+    #[tokio::test]
+    async fn test_empty_batch_proof() {
+        let config = MvpProverConfig {
+            generation_delay_ms: 1,
+            simulate_failures: false,
+            failure_rate: 0.0,
+        };
+        
+        let prover = MvpProverService::new(config);
+
+        let result = prover.generate_proof_for_batch(
+            0, // Genesis batch
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            &[],
         ).await.unwrap();
 
         assert!(result.success);
         assert!(result.proof.is_some());
         
         let proof = result.proof.unwrap();
-        assert_eq!(proof.batch_id, 1);
-        assert_eq!(proof.orders_count, 1);
-        assert!(prover.validate_proof(&proof));
+        assert_eq!(proof.batch_id, 0);
+        assert_eq!(proof.orders_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_multiple_orders_proof() {
+        let config = MvpProverConfig {
+            generation_delay_ms: 1,
+            simulate_failures: false,
+            failure_rate: 0.0,
+        };
+        
+        let prover = MvpProverService::new(config);
+        
+        let orders = vec![
+            create_test_order("order_1", OrderType::BridgeIn),
+            create_test_order("order_2", OrderType::BridgeOut),
+            create_test_order("order_3", OrderType::BridgeIn),
+        ];
+
+        let result = prover.generate_proof_for_batch(
+            5,
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222222222222222222222222222",
+            "0x3333333333333333333333333333333333333333333333333333333333333333",
+            "0x4444444444444444444444444444444444444444444444444444444444444444",
+            &orders,
+        ).await.unwrap();
+
+        assert!(result.success);
+        let proof = result.proof.unwrap();
+        assert_eq!(proof.batch_id, 5);
+        assert_eq!(proof.orders_count, 3);
+    }
+
+    #[tokio::test]
+    async fn test_proof_generation_timing() {
+        let delay_ms = 50;
+        let config = MvpProverConfig {
+            generation_delay_ms: delay_ms,
+            simulate_failures: false,
+            failure_rate: 0.0,
+        };
+        
+        let prover = MvpProverService::new(config);
+        let orders = vec![create_test_order("timing_test", OrderType::BridgeIn)];
+
+        let start = Instant::now();
+        let result = prover.generate_proof_for_batch(
+            1,
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222222222222222222222222222",
+            "0x3333333333333333333333333333333333333333333333333333333333333333",
+            "0x4444444444444444444444444444444444444444444444444444444444444444",
+            &orders,
+        ).await.unwrap();
+        let elapsed = start.elapsed().as_millis() as u64;
+
+        assert!(result.success);
+        assert!(elapsed >= delay_ms);
+        assert!(result.generation_time_ms >= delay_ms);
     }
 
     #[tokio::test]
     async fn test_simulated_failure() {
         let config = MvpProverConfig {
-            generation_delay_ms: 10,
+            generation_delay_ms: 1,
             simulate_failures: true,
             failure_rate: 1.0, // Always fail
         };
@@ -305,15 +420,240 @@ mod tests {
 
         let result = prover.generate_proof_for_batch(
             1,
-            "0x1111",
-            "0x2222", 
-            "0x3333",
-            "0x4444",
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222222222222222222222222222", 
+            "0x3333333333333333333333333333333333333333333333333333333333333333",
+            "0x4444444444444444444444444444444444444444444444444444444444444444",
             &[],
         ).await.unwrap();
 
         assert!(!result.success);
         assert!(result.proof.is_none());
         assert!(result.error_message.is_some());
+        assert_eq!(result.error_message.unwrap(), "Simulated proof generation failure");
+    }
+
+    #[test]
+    fn test_proof_validation_success() {
+        let config = MvpProverConfig::default();
+        let prover = MvpProverService::new(config);
+        
+        let proof = MockProof {
+            batch_id: 1,
+            prev_state_root: "0x1111111111111111111111111111111111111111111111111111111111111111".to_string(),
+            prev_orders_root: "0x2222222222222222222222222222222222222222222222222222222222222222".to_string(),
+            new_state_root: "0x3333333333333333333333333333333333333333333333333333333333333333".to_string(),
+            new_orders_root: "0x4444444444444444444444444444444444444444444444444444444444444444".to_string(),
+            orders_count: 5,
+            proof_data: vec![1, 2, 3, 4, 5],
+            generated_at: Utc::now(),
+            verification_key: "0x1234567890abcdef".to_string(),
+        };
+
+        assert!(prover.validate_proof(&proof));
+    }
+
+    #[test]
+    fn test_proof_validation_failures() {
+        let config = MvpProverConfig::default();
+        let prover = MvpProverService::new(config);
+        
+        // Test empty proof data
+        let mut proof = MockProof {
+            batch_id: 1,
+            prev_state_root: "0x1111111111111111111111111111111111111111111111111111111111111111".to_string(),
+            prev_orders_root: "0x2222222222222222222222222222222222222222222222222222222222222222".to_string(),
+            new_state_root: "0x3333333333333333333333333333333333333333333333333333333333333333".to_string(),
+            new_orders_root: "0x4444444444444444444444444444444444444444444444444444444444444444".to_string(),
+            orders_count: 5,
+            proof_data: vec![], // Empty!
+            generated_at: Utc::now(),
+            verification_key: "0x1234567890abcdef".to_string(),
+        };
+
+        assert!(!prover.validate_proof(&proof));
+
+        // Test non-zero batch with zero orders
+        proof.proof_data = vec![1, 2, 3];
+        proof.orders_count = 0;
+        proof.batch_id = 1; // Non-genesis batch
+        assert!(!prover.validate_proof(&proof));
+
+        // Test invalid hex roots
+        proof.orders_count = 5;
+        proof.prev_state_root = "invalid_hex".to_string();
+        assert!(!prover.validate_proof(&proof));
+    }
+
+    #[test]
+    fn test_proof_deterministic_generation() {
+        let config = MvpProverConfig {
+            generation_delay_ms: 0,
+            simulate_failures: false,
+            failure_rate: 0.0,
+        };
+        let prover = MvpProverService::new(config);
+
+        let orders = vec![create_test_order("deterministic_test", OrderType::BridgeIn)];
+
+        // Generate the same proof twice with identical inputs
+        let proof1 = prover.create_mock_proof(
+            42,
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222222222222222222222222222",
+            "0x3333333333333333333333333333333333333333333333333333333333333333",
+            "0x4444444444444444444444444444444444444444444444444444444444444444",
+            &orders,
+        );
+
+        let proof2 = prover.create_mock_proof(
+            42,
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222222222222222222222222222",
+            "0x3333333333333333333333333333333333333333333333333333333333333333",
+            "0x4444444444444444444444444444444444444444444444444444444444444444",
+            &orders,
+        );
+
+        // Proofs should be identical (deterministic)
+        assert_eq!(proof1.batch_id, proof2.batch_id);
+        assert_eq!(proof1.verification_key, proof2.verification_key);
+        assert_eq!(proof1.proof_data.len(), proof2.proof_data.len());
+        assert_eq!(proof1.proof_data, proof2.proof_data);
+    }
+
+    #[test]
+    fn test_proof_serialization() {
+        let proof = MockProof {
+            batch_id: 123,
+            prev_state_root: "0x1111111111111111111111111111111111111111111111111111111111111111".to_string(),
+            prev_orders_root: "0x2222222222222222222222222222222222222222222222222222222222222222".to_string(),
+            new_state_root: "0x3333333333333333333333333333333333333333333333333333333333333333".to_string(),
+            new_orders_root: "0x4444444444444444444444444444444444444444444444444444444444444444".to_string(),
+            orders_count: 10,
+            proof_data: vec![0xde, 0xad, 0xbe, 0xef],
+            generated_at: Utc::now(),
+            verification_key: "0xabcdef1234567890".to_string(),
+        };
+
+        // Test hex string conversion
+        let hex_string = proof.to_hex_string();
+        assert!(hex_string.starts_with("0x"));
+        assert_eq!(hex_string, "0xdeadbeef");
+
+        // Test submission bytes
+        let submission_bytes = proof.to_submission_bytes();
+        assert_eq!(submission_bytes, vec![0xde, 0xad, 0xbe, 0xef]);
+
+        // Test JSON serialization
+        let json = serde_json::to_string(&proof).unwrap();
+        assert!(json.contains("batch_id"));
+        assert!(json.contains("123"));
+
+        // Test deserialization
+        let deserialized: MockProof = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.batch_id, 123);
+        assert_eq!(deserialized.orders_count, 10);
+    }
+
+    #[test]
+    fn test_prover_stats() {
+        let config = MvpProverConfig {
+            generation_delay_ms: 500,
+            simulate_failures: true,
+            failure_rate: 0.25,
+        };
+        let prover = MvpProverService::new(config);
+
+        let stats = prover.get_stats();
+        assert!(stats.is_mock);
+        assert_eq!(stats.generation_delay_ms, 500);
+        assert!(stats.simulate_failures);
+        assert_eq!(stats.failure_rate, 0.25);
+        assert_eq!(stats.average_generation_time_ms, 500);
+    }
+
+    #[test]
+    fn test_config_update() {
+        let initial_config = MvpProverConfig {
+            generation_delay_ms: 100,
+            simulate_failures: false,
+            failure_rate: 0.0,
+        };
+        let mut prover = MvpProverService::new(initial_config);
+
+        let new_config = MvpProverConfig {
+            generation_delay_ms: 200,
+            simulate_failures: true,
+            failure_rate: 0.5,
+        };
+
+        prover.update_config(new_config.clone());
+        assert_eq!(prover.config.generation_delay_ms, 200);
+        assert!(prover.config.simulate_failures);
+        assert_eq!(prover.config.failure_rate, 0.5);
+    }
+
+    #[tokio::test]
+    async fn test_large_batch_proof() {
+        let config = MvpProverConfig {
+            generation_delay_ms: 1,
+            simulate_failures: false,
+            failure_rate: 0.0,
+        };
+        
+        let prover = MvpProverService::new(config);
+        
+        // Create a large batch (100 orders)
+        let mut orders = Vec::new();
+        for i in 0..100 {
+            orders.push(create_test_order(&format!("order_{}", i), OrderType::BridgeIn));
+        }
+
+        let result = prover.generate_proof_for_batch(
+            999,
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222222222222222222222222222",
+            "0x3333333333333333333333333333333333333333333333333333333333333333",
+            "0x4444444444444444444444444444444444444444444444444444444444444444",
+            &orders,
+        ).await.unwrap();
+
+        assert!(result.success);
+        let proof = result.proof.unwrap();
+        assert_eq!(proof.batch_id, 999);
+        assert_eq!(proof.orders_count, 100);
+        assert_eq!(proof.proof_data.len(), 1024); // Should be padded to 1024 bytes
+        assert!(prover.validate_proof(&proof));
+    }
+
+    #[test]
+    fn test_proof_different_inputs_different_outputs() {
+        let config = MvpProverConfig::default();
+        let prover = MvpProverService::new(config);
+
+        let orders1 = vec![create_test_order("order_1", OrderType::BridgeIn)];
+        let orders2 = vec![create_test_order("order_2", OrderType::BridgeOut)];
+
+        let proof1 = prover.create_mock_proof(
+            1,
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222222222222222222222222222",
+            "0x3333333333333333333333333333333333333333333333333333333333333333",
+            "0x4444444444444444444444444444444444444444444444444444444444444444",
+            &orders1,
+        );
+
+        let proof2 = prover.create_mock_proof(
+            1,
+            "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0x2222222222222222222222222222222222222222222222222222222222222222",
+            "0x3333333333333333333333333333333333333333333333333333333333333333",
+            "0x4444444444444444444444444444444444444444444444444444444444444444",
+            &orders2,
+        );
+
+        // Different orders should produce different proofs
+        assert_ne!(proof1.proof_data, proof2.proof_data);
     }
 }
