@@ -6,6 +6,8 @@ export const PYUSD_ADDRESSES = {
   1: '0x6c3ea9036406852006290770BEdFcAbA0e23A0e8' as Address,
   // Sepolia Testnet (using MockUSDC from our deployment)
   11155111: '0x5FbDB2315678afecb367f032d93F642f64180aa3' as Address,
+  // Local Anvil (using MockUSDC from our deployment)
+  31337: '0x5FbDB2315678afecb367f032d93F642f64180aa3' as Address,
 } as const;
 
 // VaporBridge Contract Addresses (from our deployment)

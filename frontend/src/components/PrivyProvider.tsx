@@ -4,15 +4,36 @@ import { PrivyProvider } from '@privy-io/react-auth';
 import { WagmiProvider } from '@privy-io/wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http } from 'viem';
-import { mainnet, sepolia } from 'viem/chains';
+import { mainnet, sepolia, foundry } from 'viem/chains';
 import { createConfig } from 'wagmi';
+
+// Custom local Anvil chain configuration
+const anvilChain = {
+  ...foundry,
+  id: 31337,
+  name: 'Anvil Local',
+  nativeCurrency: {
+    name: 'Ether',
+    symbol: 'ETH',
+    decimals: 18,
+  },
+  rpcUrls: {
+    default: {
+      http: ['http://localhost:8545'],
+    },
+    public: {
+      http: ['http://localhost:8545'],
+    },
+  },
+} as const;
 
 // Wagmi configuration
 const wagmiConfig = createConfig({
-  chains: [mainnet, sepolia],
+  chains: [mainnet, sepolia, anvilChain],
   transports: {
     [mainnet.id]: http(),
     [sepolia.id]: http(),
+    [anvilChain.id]: http('http://localhost:8545'),
   },
 });
 
@@ -59,7 +80,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           createOnLogin: 'users-without-wallets',
           requireUserPasswordOnCreate: false,
         },
-        defaultChain: sepolia, // Use Sepolia for testing
+        supportedChains: [mainnet, sepolia, anvilChain], // Include all chains
+        defaultChain: anvilChain, // Use local Anvil for development
       }}
     >
       <QueryClientProvider client={queryClient}>
