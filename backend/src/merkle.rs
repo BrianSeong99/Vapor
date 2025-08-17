@@ -1,5 +1,6 @@
 use crate::models::{Order, AccountState, TokenBalance};
 use crate::lib::{SparseMerkleTree, SparseMerkleLeaf, MerkleProof, ethereum_address_to_path, index_to_path};
+use crate::lib::sparse_merkle_tree::TreeStats;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use sha3::{Digest, Keccak256};
@@ -50,39 +51,86 @@ pub struct OrderMerkleProof {
 impl MerkleTreeManager {
     pub fn new() -> Self {
         Self {
-            account_tree: SparseMerkleTree::new(ACCOUNT_TREE_DEPTH),
-            order_tree: OrderMerkleTree::new(ORDER_TREE_DEPTH),
+            account_tree: SparseMerkleTree::new_with_bounds(ACCOUNT_TREE_DEPTH, 8, 160),
+            order_tree: OrderMerkleTree::new_optimized(ORDER_TREE_DEPTH),
+            current_batch_id: 0,
+        }
+    }
+    
+    /// Create manager optimized for expected data sizes
+    pub fn new_for_batch_size(expected_accounts: usize, expected_orders: usize) -> Self {
+        Self {
+            account_tree: SparseMerkleTree::new_for_size(expected_accounts),
+            order_tree: OrderMerkleTree::new_for_size(expected_orders),
             current_batch_id: 0,
         }
     }
 
-    /// Build sparse account state tree (160-bit depth based on Ethereum addresses)
+    /// Build sparse account state tree (optimized for batch size)
     pub fn build_state_tree(&mut self, accounts: &[AccountState]) -> Result<String> {
+        // Optimize tree size for current data
+        self.account_tree.resize_if_needed(accounts.len())?;
         self.account_tree.clear();
         
-        for account in accounts {
-            self.account_tree.insert(account.address.clone(), account.clone())?;
-        }
+        // Use batch insert for better performance
+        let items: Vec<(String, AccountState)> = accounts.iter()
+            .map(|acc| (acc.address.clone(), acc.clone()))
+            .collect();
+        
+        self.account_tree.insert_batch(items)?;
         
         let root = self.account_tree.compute_root()?;
         Ok(hex::encode(root))
     }
+    
+    /// Build state tree from scratch (most efficient for new batches)
+    pub fn build_state_tree_from_scratch(&mut self, accounts: &[AccountState]) -> Result<String> {
+        let items: Vec<(String, AccountState)> = accounts.iter()
+            .map(|acc| (acc.address.clone(), acc.clone()))
+            .collect();
+        
+        self.account_tree = SparseMerkleTree::build_from_items(items)?;
+        let root = self.account_tree.compute_root()?;
+        Ok(hex::encode(root))
+    }
 
-    /// Build sparse order tree (20 levels, max ~1M orders)
+    /// Build sparse order tree (optimized for batch size)
     /// Uses Solidity-compatible hashing to match smart contract verification
     pub fn build_orders_tree(&mut self, orders: &[Order], batch_id: u32) -> Result<String> {
-        let max_orders = 1 << ORDER_TREE_DEPTH; // 2^20 = ~1M orders
-        if orders.len() > max_orders {
-            return Err(anyhow::anyhow!("Too many orders: {} (max {})", orders.len(), max_orders));
+        if orders.is_empty() {
+            return Ok("0x".to_string());
         }
         
+        // Optimize tree for current batch size
+        self.order_tree.inner.resize_if_needed(orders.len())?;
         self.current_batch_id = batch_id;
         self.order_tree.set_batch_id(batch_id);
         self.order_tree.clear();
         
-        for (index, order) in orders.iter().enumerate() {
-            self.order_tree.insert(index.to_string(), order.clone())?;
+        // Use batch insert for better performance
+        let items: Vec<(String, Order)> = orders.iter().enumerate()
+            .map(|(index, order)| (index.to_string(), order.clone()))
+            .collect();
+        
+        self.order_tree.inner.insert_batch(items)?;
+        
+        let root = self.order_tree.compute_root()?;
+        Ok(hex::encode(root))
+    }
+    
+    /// Build orders tree from scratch (most efficient for new batches)
+    pub fn build_orders_tree_from_scratch(&mut self, orders: &[Order], batch_id: u32) -> Result<String> {
+        if orders.is_empty() {
+            return Ok("0x".to_string());
         }
+        
+        let items: Vec<(String, Order)> = orders.iter().enumerate()
+            .map(|(index, order)| (index.to_string(), order.clone()))
+            .collect();
+        
+        self.order_tree.inner = SparseMerkleTree::build_from_items(items)?;
+        self.current_batch_id = batch_id;
+        self.order_tree.set_batch_id(batch_id);
         
         let root = self.order_tree.compute_root()?;
         Ok(hex::encode(root))
@@ -98,6 +146,36 @@ impl MerkleTreeManager {
             proof: proof.proof,
             root: proof.root,
         })
+    }
+    
+    /// Generate batch proofs for multiple orders (more efficient than individual proofs)
+    pub fn generate_batch_order_proofs(&mut self, order_indices: &[usize]) -> Result<Vec<OrderMerkleProof>> {
+        let keys: Vec<String> = order_indices.iter().map(|i| i.to_string()).collect();
+        let batch_result = self.order_tree.inner.generate_batch_proofs(&keys)?;
+        
+        let mut proofs = Vec::with_capacity(batch_result.proofs.len());
+        for (i, proof) in batch_result.proofs.into_iter().enumerate() {
+            proofs.push(OrderMerkleProof {
+                order_index: order_indices[i],
+                leaf_hash: proof.leaf_hash,
+                proof: proof.proof,
+                root: proof.root,
+            });
+        }
+        
+        Ok(proofs)
+    }
+    
+    /// Get tree statistics for monitoring and optimization
+    pub fn get_tree_stats(&self) -> (TreeStats, TreeStats) {
+        (self.account_tree.get_stats(), self.order_tree.inner.get_stats())
+    }
+    
+    /// Optimize both trees based on current data
+    pub fn optimize_trees(&mut self) -> Result<()> {
+        self.account_tree.optimize()?;
+        self.order_tree.inner.optimize()?;
+        Ok(())
     }
 
     /// Generate Merkle proof for an account state  
@@ -196,6 +274,20 @@ impl OrderMerkleTree {
     pub fn new(depth: usize) -> Self {
         Self {
             inner: SparseMerkleTree::new(depth),
+            current_batch_id: None,
+        }
+    }
+    
+    pub fn new_optimized(depth: usize) -> Self {
+        Self {
+            inner: SparseMerkleTree::new_with_bounds(depth, 4, 20),
+            current_batch_id: None,
+        }
+    }
+    
+    pub fn new_for_size(expected_orders: usize) -> Self {
+        Self {
+            inner: SparseMerkleTree::new_for_size(expected_orders),
             current_batch_id: None,
         }
     }
