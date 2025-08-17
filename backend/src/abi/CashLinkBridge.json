@@ -1,0 +1,83 @@
+[
+  {
+    "type": "function",
+    "name": "submitProof",
+    "inputs": [
+      {"name": "batchId", "type": "uint32"},
+      {"name": "prevBatchId", "type": "uint32"},
+      {"name": "prevStateRoot", "type": "bytes32"},
+      {"name": "prevOrdersRoot", "type": "bytes32"},
+      {"name": "newStateRoot", "type": "bytes32"},
+      {"name": "newOrdersRoot", "type": "bytes32"},
+      {"name": "proof", "type": "bytes"}
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claim",
+    "inputs": [
+      {"name": "batchId", "type": "uint32"},
+      {"name": "orderId", "type": "uint32"},
+      {"name": "to", "type": "address"},
+      {"name": "amount", "type": "uint256"},
+      {"name": "proofPath", "type": "bytes32[]"}
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "currentBatchId",
+    "inputs": [],
+    "outputs": [{"type": "uint32"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getBatchRoots",
+    "inputs": [{"name": "batchId", "type": "uint32"}],
+    "outputs": [
+      {"name": "stateRoot", "type": "bytes32"},
+      {"name": "ordersRoot", "type": "bytes32"}
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isOrderClaimed",
+    "inputs": [{"name": "orderId", "type": "uint32"}],
+    "outputs": [{"type": "bool"}],
+    "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "Deposit",
+    "inputs": [
+      {"name": "user", "type": "address", "indexed": true},
+      {"name": "token", "type": "address", "indexed": true},
+      {"name": "amount", "type": "uint256", "indexed": false},
+      {"name": "bankingHash", "type": "bytes32", "indexed": true}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "Claim",
+    "inputs": [
+      {"name": "user", "type": "address", "indexed": true},
+      {"name": "batchId", "type": "uint32", "indexed": true},
+      {"name": "orderId", "type": "uint32", "indexed": true},
+      {"name": "amount", "type": "uint256", "indexed": false}
+    ]
+  },
+  {
+    "type": "event",
+    "name": "ProofSubmitted",
+    "inputs": [
+      {"name": "batchId", "type": "uint32", "indexed": true},
+      {"name": "stateRoot", "type": "bytes32", "indexed": false},
+      {"name": "ordersRoot", "type": "bytes32", "indexed": false}
+    ]
+  }
+]
