@@ -1,22 +1,102 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { usePrivy } from '@privy-io/react-auth';
+import { usePyusd } from '../hooks/usePyusd';
 
 export default function SellerInputPage() {
   const router = useRouter();
-  const [amount, setAmount] = useState('100,000');
+  const { login, logout, authenticated, user } = usePrivy();
+  const { 
+    userAddress, 
+    formattedBalance, 
+    needsApproval, 
+    approvePyusd, 
+    depositPyusd,
+    isApproveLoading,
+    isApproveSuccess,
+    isDepositLoading,
+    isDepositSuccess
+  } = usePyusd();
+
+  const [amount, setAmount] = useState('1000');
   const [bankAccount, setBankAccount] = useState('841273-1283712');
   const [service, setService] = useState('PayPal Hong Kong');
-  const [isConnected, setIsConnected] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [step, setStep] = useState<'input' | 'approve' | 'deposit' | 'success'>('input');
 
   const handleConnectWallet = () => {
-    // TODO: Integrate with Privy wallet
-    setIsConnected(true);
+    login();
   };
 
-  const handleSubmit = () => {
-    router.push('/confirm');
+  const handleSubmit = async () => {
+    if (!authenticated || !userAddress) {
+      handleConnectWallet();
+      return;
+    }
+
+    // Validate amount
+    const numAmount = parseFloat(amount.replace(/,/g, ''));
+    const availableBalance = parseFloat(formattedBalance);
+    
+    if (numAmount > availableBalance) {
+      alert(`Insufficient balance. You have ${formattedBalance} PYUSD available.`);
+      return;
+    }
+
+    // Create order hash (simplified for demo)
+    const orderData = {
+      amount: numAmount,
+      bankAccount,
+      service,
+      userAddress,
+      timestamp: Date.now()
+    };
+    
+    const orderHash = `0x${Array.from(new TextEncoder().encode(JSON.stringify(orderData)))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('')
+      .slice(0, 64)
+      .padEnd(64, '0')}` as `0x${string}`;
+
+    try {
+      setIsProcessing(true);
+      
+      // Step 1: Check if approval is needed
+      if (needsApproval(amount.replace(/,/g, ''))) {
+        setStep('approve');
+        await approvePyusd(amount.replace(/,/g, ''));
+        
+        // Wait for approval to complete
+        while (!isApproveSuccess) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      // Step 2: Deposit PYUSD
+      setStep('deposit');
+      await depositPyusd(amount.replace(/,/g, ''), orderHash);
+      
+      // Wait for deposit to complete
+      while (!isDepositSuccess) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      setStep('success');
+      
+      // Redirect after success
+      setTimeout(() => {
+        router.push('/confirm');
+      }, 2000);
+
+    } catch (error) {
+      console.error('Transaction failed:', error);
+      alert('Transaction failed. Please try again.');
+      setStep('input');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -26,6 +106,45 @@ export default function SellerInputPage() {
         <div className="mb-8 mt-4">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">Vapor</h1>
           <p className="text-gray-600 text-lg">Private, Permissionless OffRamp</p>
+          
+          {/* Wallet Status */}
+          {authenticated && userAddress && (
+            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-green-800">Wallet Connected</p>
+                  <p className="text-xs text-green-600 font-mono">
+                    {userAddress.slice(0, 6)}...{userAddress.slice(-4)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-medium text-green-800">PYUSD Balance</p>
+                  <p className="text-sm font-bold text-green-900">{formattedBalance}</p>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Transaction Progress */}
+          {isProcessing && (
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center space-x-3">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                <div>
+                  <p className="text-sm font-medium text-blue-800">
+                    {step === 'approve' && 'Approving PYUSD spending...'}
+                    {step === 'deposit' && 'Depositing PYUSD to Vapor Bridge...'}
+                    {step === 'success' && 'Transaction completed successfully!'}
+                  </p>
+                  <p className="text-xs text-blue-600">
+                    {step === 'approve' && 'Please confirm the approval transaction in your wallet'}
+                    {step === 'deposit' && 'Please confirm the deposit transaction in your wallet'}
+                    {step === 'success' && 'Redirecting to confirmation page...'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Form */}
