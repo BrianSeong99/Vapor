@@ -1,10 +1,10 @@
 [package]
-name = "cashlink-backend"
+name = "vapor-backend"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "cashlink-server"
+name = "vapor-server"
 path = "src/main.rs"
 
 [dependencies]

@@ -2,10 +2,10 @@
 pragma solidity ^0.8.19;
 
 import "forge-std/Test.sol";
-import "../src/CashlinkBridge.sol";
+import "../src/VaporBridge.sol";
 import "../src/ProofVerifier.sol";
 import "../src/MockUSDC.sol";
-import "../src/interfaces/ICashlinkBridge.sol";
+import "../src/interfaces/IVaporBridge.sol";
 import "../src/interfaces/IProofVerifier.sol";
 
 contract MockSP1Verifier {
@@ -18,8 +18,8 @@ contract MockSP1Verifier {
     }
 }
 
-contract CashlinkBridgeTest is Test {
-    CashlinkBridge public bridge;
+contract VaporBridgeTest is Test {
+    VaporBridge public bridge;
     ProofVerifier public verifier;
     MockUSDC public usdc;
     MockSP1Verifier public mockSP1Verifier;
@@ -47,7 +47,7 @@ contract CashlinkBridgeTest is Test {
         mockSP1Verifier = new MockSP1Verifier();
         verifier = new ProofVerifier(address(mockSP1Verifier), PROGRAM_VKEY, false);
         usdc = new MockUSDC();
-        bridge = new CashlinkBridge(address(verifier));
+        bridge = new VaporBridge(address(verifier));
         
         // Add USDC as supported token (token ID 1)
         bridge.addSupportedToken(1, address(usdc));
@@ -218,7 +218,7 @@ contract CashlinkBridgeTest is Test {
         bridge.claim(batchId, orderId, recipient, 1, amount, proof);
         
         // Try to claim again
-        vm.expectRevert(ICashlinkBridge.OrderAlreadyClaimed.selector);
+        vm.expectRevert(IVaporBridge.OrderAlreadyClaimed.selector);
         bridge.claim(batchId, orderId, recipient, 1, amount, proof);
     }
     
@@ -229,7 +229,7 @@ contract CashlinkBridgeTest is Test {
         uint256 amount = 500 * 10**6;
         bytes32[] memory proof = new bytes32[](0);
         
-        vm.expectRevert(ICashlinkBridge.BatchNotVerified.selector);
+        vm.expectRevert(IVaporBridge.BatchNotVerified.selector);
         bridge.claim(batchId, orderId, recipient, 1, amount, proof);
     }
     
@@ -252,7 +252,7 @@ contract CashlinkBridgeTest is Test {
         bytes32[] memory wrongProof = new bytes32[](1);
         wrongProof[0] = keccak256("wrongProof");
         
-        vm.expectRevert(ICashlinkBridge.InvalidMerkleProof.selector);
+        vm.expectRevert(IVaporBridge.InvalidMerkleProof.selector);
         bridge.claim(batchId, orderId, recipient, 1, amount, wrongProof);
     }
     
@@ -273,7 +273,7 @@ contract CashlinkBridgeTest is Test {
         
         bytes32[] memory proof = new bytes32[](0);
         
-        vm.expectRevert(ICashlinkBridge.InsufficientBalance.selector);
+        vm.expectRevert(IVaporBridge.InsufficientBalance.selector);
         bridge.claim(batchId, orderId, recipient, 1, amount, proof);
     }
     
@@ -342,10 +342,10 @@ contract CashlinkBridgeTest is Test {
         );
         
         // Prepare batch claim data for multiple wallets
-        ICashlinkBridge.ClaimData[] memory claims = new ICashlinkBridge.ClaimData[](3);
+        IVaporBridge.ClaimData[] memory claims = new IVaporBridge.ClaimData[](3);
         
         // Claim 1: -> Destination A
-        claims[0] = ICashlinkBridge.ClaimData({
+        claims[0] = IVaporBridge.ClaimData({
             orderId: 101,
             destinationAddress: user1,
             tokenId: 1,
@@ -354,7 +354,7 @@ contract CashlinkBridgeTest is Test {
         });
         
         // Claim 2: -> Destination B  
-        claims[1] = ICashlinkBridge.ClaimData({
+        claims[1] = IVaporBridge.ClaimData({
             orderId: 102,
             destinationAddress: user2,
             tokenId: 1,
@@ -363,7 +363,7 @@ contract CashlinkBridgeTest is Test {
         });
         
         // Claim 3: -> Destination C
-        claims[2] = ICashlinkBridge.ClaimData({
+        claims[2] = IVaporBridge.ClaimData({
             orderId: 103,
             destinationAddress: address(0x1234567890123456789012345678901234567890),
             tokenId: 1,
@@ -381,8 +381,8 @@ contract CashlinkBridgeTest is Test {
         // In a real scenario, you would generate proper Merkle proofs
         
         // Test with empty claims array first
-        ICashlinkBridge.ClaimData[] memory emptyClaims = new ICashlinkBridge.ClaimData[](0);
-        vm.expectRevert(ICashlinkBridge.EmptyClaimsArray.selector);
+        IVaporBridge.ClaimData[] memory emptyClaims = new IVaporBridge.ClaimData[](0);
+        vm.expectRevert(IVaporBridge.EmptyClaimsArray.selector);
         bridge.batchClaim(1, emptyClaims);
         
         // Execute batch claim with invalid proofs (should gracefully skip invalid claims)
@@ -404,9 +404,9 @@ contract CashlinkBridgeTest is Test {
         verifier.submitProof(1, 0, bytes32(0), bytes32(0), stateRoot, ordersRoot, "0x1234");
         
         // Create batch claim with duplicate order IDs
-        ICashlinkBridge.ClaimData[] memory claims = new ICashlinkBridge.ClaimData[](2);
+        IVaporBridge.ClaimData[] memory claims = new IVaporBridge.ClaimData[](2);
         
-        claims[0] = ICashlinkBridge.ClaimData({
+        claims[0] = IVaporBridge.ClaimData({
             orderId: 201,
             destinationAddress: user1,
             tokenId: 1,
@@ -414,7 +414,7 @@ contract CashlinkBridgeTest is Test {
             merkleProof: new bytes32[](0)
         });
         
-        claims[1] = ICashlinkBridge.ClaimData({
+        claims[1] = IVaporBridge.ClaimData({
             orderId: 201, // Same order ID - should be skipped
             destinationAddress: user2,
             tokenId: 1,
@@ -437,8 +437,8 @@ contract CashlinkBridgeTest is Test {
         
         verifier.submitProof(1, 0, bytes32(0), bytes32(0), stateRoot, ordersRoot, "0x1234");
         
-        ICashlinkBridge.ClaimData[] memory claims = new ICashlinkBridge.ClaimData[](1);
-        claims[0] = ICashlinkBridge.ClaimData({
+        IVaporBridge.ClaimData[] memory claims = new IVaporBridge.ClaimData[](1);
+        claims[0] = IVaporBridge.ClaimData({
             orderId: 301,
             destinationAddress: user1,
             tokenId: 1,

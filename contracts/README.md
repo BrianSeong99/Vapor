@@ -1,6 +1,6 @@
-# Cashlink Smart Contracts
+# Vapor Smart Contracts
 
-Smart contracts for the Cashlink P2P offramp system, enabling trustless multi-token claims through ZK proof verification with banking integration.
+Smart contracts for the Vapor P2P offramp system, enabling trustless multi-token claims through ZK proof verification with banking integration.
 
 ## Architecture
 
@@ -13,7 +13,7 @@ Smart contracts for the Cashlink P2P offramp system, enabling trustless multi-to
   - `getBatch()`: Returns batch data for Merkle proof verification
   - MVP/Production modes for flexible deployment
 
-#### CashlinkBridge.sol
+#### VaporBridge.sol
 - **Purpose**: Handles multi-token deposits and claims using Merkle proofs with banking integration
 - **Key Functions**:
   - `claim()`: Claims tokens using Merkle proof from verified batch (supports multiple tokens)
@@ -109,7 +109,7 @@ ETHERSCAN_API_KEY=your_api_key
 
 ### Test Coverage
 - **ProofVerifier**: 12 tests covering all functionality
-- **CashlinkBridge**: 15 tests including multi-token and banking hash validation
+- **VaporBridge**: 15 tests including multi-token and banking hash validation
 - **Total**: 27 tests with 100% pass rate
 
 ### Run Tests
@@ -119,7 +119,7 @@ forge test
 
 # Specific contract
 forge test --match-contract ProofVerifierTest
-forge test --match-contract CashlinkBridgeTest
+forge test --match-contract VaporBridgeTest
 
 # With gas reporting
 forge test --gas-report
@@ -133,7 +133,7 @@ forge test --gas-report
 ```solidity
 // Deploy contracts
 ProofVerifier verifier = new ProofVerifier(sp1Verifier, programVKey, false);
-CashlinkBridge bridge = new CashlinkBridge(address(verifier));
+VaporBridge bridge = new VaporBridge(address(verifier));
 
 // Add supported tokens
 bridge.addSupportedToken(1, usdcAddress); // Token ID 1 = USDC
@@ -250,7 +250,7 @@ Deployment addresses are saved to `deployments/{chainId}.json` after each deploy
 contracts/
 ├── src/
 │   ├── ProofVerifier.sol       # ZK proof verification
-│   ├── CashlinkBridge.sol      # Multi-token claims with Merkle proofs
+│   ├── VaporBridge.sol         # Multi-token claims with Merkle proofs
 │   ├── MockUSDC.sol           # OpenZeppelin-based test token
 │   └── interfaces/            # Contract interfaces
 ├── test/                      # Comprehensive tests (27 tests)

@@ -396,7 +396,7 @@ async fn submit_batch_claim_to_contract(claims: &[ProcessedClaim]) -> Option<Str
     // 5. Emits BatchClaimed event with total claims and amount
     // 6. Return the transaction hash
     
-    info!("Mock: Submitting batch claim with {} claims to CashlinkBridge.batchClaim()", claims.len());
+    info!("Mock: Submitting batch claim with {} claims to VaporBridge.batchClaim()", claims.len());
     info!("Mock: Each claim will recreate leaf: keccak256(abi.encode(batchId, orderId, ORDER_TYPE_BRIDGE_OUT, address(0), destinationAddress, tokenId, amount))");
     
     // Simulate successful batch claim transaction

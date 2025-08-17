@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Cashlink - Happy Path Demo Script
+# Vapor - Happy Path Demo Script
 # Demonstrates complete P2P offramp flow
 
-echo "🎯 Starting Cashlink happy path demo..."
+echo "🎯 Starting Vapor happy path demo..."
 
 # Step 1: Seller deposits USDC
 echo "1️⃣ Seller deposits 100 USDC..."

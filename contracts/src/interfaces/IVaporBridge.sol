@@ -2,11 +2,11 @@
 pragma solidity ^0.8.19;
 
 /**
- * @title ICashlinkBridge
- * @dev Interface for the Cashlink Bridge
+ * @title IVaporBridge
+ * @dev Interface for the Vapor Bridge
  * Handles USDC claims using Merkle proofs from verified batches
  */
-interface ICashlinkBridge {
+interface IVaporBridge {
     // Events
     event Claimed(
         uint256 indexed batchId,

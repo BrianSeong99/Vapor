@@ -8,11 +8,11 @@ use web3::{
     Web3,
 };
 
-/// Blockchain client for interacting with CashLink smart contracts
+/// Blockchain client for interacting with Vapor smart contracts
 pub struct BlockchainClient {
     /// Web3 instance for Ethereum interactions
     pub web3: Web3<Http>,
-    /// CashLink Bridge contract
+    /// Vapor Bridge contract
     pub bridge_contract: Contract<Http>,
     /// Proof Verifier contract
     pub proof_verifier_contract: Contract<Http>,
@@ -84,7 +84,7 @@ impl BlockchainClient {
         let web3 = Web3::new(transport);
 
         // Bridge contract ABI
-        let bridge_abi = include_bytes!("abi/CashLinkBridge.json");
+        let bridge_abi = include_bytes!("abi/VaporBridge.json");
         let bridge_contract = Contract::from_json(
             web3.eth(),
             bridge_address,

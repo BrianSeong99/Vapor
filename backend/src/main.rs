@@ -42,7 +42,7 @@ async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
     let config = Config::from_env()?;
     
-    info!("Starting Cashlink Backend Server...");
+    info!("Starting Vapor Backend Server...");
     info!("Contract address: {}", config.blockchain.contract_address);
 
     // Initialize database

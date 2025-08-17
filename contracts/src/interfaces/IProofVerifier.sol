@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 /**
  * @title IProofVerifier
- * @dev Interface for the Cashlink Proof Verifier
+ * @dev Interface for the Vapor Proof Verifier
  * Manages batch state and order roots with ZK proof verification
  */
 interface IProofVerifier {

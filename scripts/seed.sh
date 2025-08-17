@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Cashlink - Seed Demo Script
+# Vapor - Seed Demo Script
 # Seeds initial USDC balances for demo
 
-echo "🌱 Seeding Cashlink demo environment..."
+echo "🌱 Seeding Vapor demo environment..."
 
 # Check if contracts are deployed
 if [ -z "$CONTRACT_ADDRESS" ]; then

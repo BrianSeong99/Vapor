@@ -1,6 +1,6 @@
-# Cashlink Backend
+# Vapor Backend
 
-Rust backend service for the Cashlink P2P offramp system, handling order management, batch processing, and blockchain integration.
+Rust backend service for the Vapor P2P offramp system, handling order management, batch processing, and blockchain integration.
 
 ## Architecture
 

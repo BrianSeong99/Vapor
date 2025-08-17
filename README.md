@@ -1,8 +1,8 @@
-# Cashlink - P2P Offramp (PYUSD↔USD) MVP
+# Vapor - P2P Offramp (PYUSD↔USD) MVP
 
 ## Executive Summary
 
-Cashlink is a P2P USD offramp focused on USDC/PYUSD ↔ USD built for the hackathon with a minimal trust-minimized architecture. We combine off-chain order matching and batching with on-chain ZK proof verification to create a scalable, privacy-preserving offramp solution.
+Vapor is a P2P USD offramp focused on USDC/PYUSD ↔ USD built for the hackathon with a minimal trust-minimized architecture. We combine off-chain order matching and batching with on-chain ZK proof verification to create a scalable, privacy-preserving offramp solution.
 
 ### Key Features
 - **On-chain**: Minimal ProofVerifierRegistry for batch-pinned roots and ZK proof verification
@@ -11,7 +11,7 @@ Cashlink is a P2P USD offramp focused on USDC/PYUSD ↔ USD built for the hackat
 
 ## Problem Statement
 
-Current off-ramps are fragmented and opaque. Cashlink provides:
+Current off-ramps are fragmented and opaque. Vapor provides:
 - ✅ Scalable off-chain performance (matching, batching, account trees)
 - ✅ Privacy preservation (account states not exposed publicly)
 - ✅ Verifiable batch outcomes via ZK proofs

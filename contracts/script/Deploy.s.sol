@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import "forge-std/Script.sol";
 import "../src/ProofVerifier.sol";
-import "../src/CashlinkBridge.sol";
+import "../src/VaporBridge.sol";
 import "../src/MockUSDC.sol";
 
 contract DeployScript is Script {
@@ -36,8 +36,8 @@ contract DeployScript is Script {
             false // useActualSP1Verification
         );
         
-        // Deploy CashlinkBridge
-        CashlinkBridge bridge = new CashlinkBridge(
+        // Deploy VaporBridge
+        VaporBridge bridge = new VaporBridge(
             address(proofVerifier)
         );
         
@@ -49,7 +49,7 @@ contract DeployScript is Script {
         // Log deployed addresses
         console.log("=== Deployment Complete ===");
         console.log("ProofVerifier deployed to:", address(proofVerifier));
-        console.log("CashlinkBridge deployed to:", address(bridge));
+        console.log("VaporBridge deployed to:", address(bridge));
         console.log("USDC Token address:", usdcToken);
         console.log("SP1 Verifier address:", sp1Verifier);
         console.log("==============================");

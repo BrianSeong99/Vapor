@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "./interfaces/ICashlinkBridge.sol";
+import "./interfaces/IVaporBridge.sol";
 import "./interfaces/IProofVerifier.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
 /**
- * @title CashlinkBridge
+ * @title VaporBridge
  * @dev Handles USDC claims using Merkle proofs from verified batches
  */
-contract CashlinkBridge is ICashlinkBridge {
+contract VaporBridge is IVaporBridge {
     // Order types for Merkle leaf validation
     uint8 constant ORDER_TYPE_BRIDGE_IN = 0;
     uint8 constant ORDER_TYPE_BRIDGE_OUT = 1;

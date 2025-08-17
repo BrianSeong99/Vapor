@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Setting up Cashlink MVP..."
+echo "🚀 Setting up Vapor MVP..."
 
 # 1. Copy environment config
 echo "📝 Setting up environment..."
