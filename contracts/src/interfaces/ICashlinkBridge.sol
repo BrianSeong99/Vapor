@@ -16,6 +16,13 @@ interface ICashlinkBridge {
         uint256 amount
     );
 
+    event BatchClaimed(
+        uint256 indexed batchId,
+        address indexed filler,
+        uint256 totalClaims,
+        uint256 totalAmount
+    );
+
     event Deposited(
         address indexed from,
         uint256 tokenId,
@@ -34,6 +41,15 @@ interface ICashlinkBridge {
         address indexed tokenAddress
     );
 
+    // Batch claim data structures
+    struct ClaimData {
+        uint256 orderId;
+        address destinationAddress; // Where tokens should be sent
+        uint256 tokenId;
+        uint256 amount;
+        bytes32[] merkleProof;
+    }
+
     // Errors
     error InvalidMerkleProof();
     error OrderAlreadyClaimed();
@@ -42,6 +58,8 @@ interface ICashlinkBridge {
     error TokenNotSupported();
     error TokenAlreadyExists();
     error InvalidTokenAddress();
+    error EmptyClaimsArray();
+    error MismatchedArrayLengths();
 
     /**
      * @dev Claim tokens using a Merkle proof for a BridgeOut order
@@ -59,6 +77,16 @@ interface ICashlinkBridge {
         uint256 tokenId,
         uint256 amount,
         bytes32[] calldata merkleProof
+    ) external;
+
+    /**
+     * @dev Batch claim tokens for multiple wallets using Merkle proofs
+     * @param batchId The batch ID containing the orders
+     * @param claims Array of claim data for each wallet
+     */
+    function batchClaim(
+        uint256 batchId,
+        ClaimData[] calldata claims
     ) external;
 
     /**

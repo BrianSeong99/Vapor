@@ -75,14 +75,14 @@ contract CashlinkBridge is ICashlinkBridge {
         }
         
         // Construct the order leaf for BridgeOut
-        // Leaf format: keccak256(abi.encode(batchId, orderId, ORDER_TYPE_BRIDGE_OUT, to, to, tokenId, amount))
+        // Leaf format: keccak256(abi.encode(batchId, orderId, ORDER_TYPE_BRIDGE_OUT, address(0), to, tokenId, amount))
         bytes32 orderLeaf = keccak256(abi.encode(
             batchId,
             orderId,
             ORDER_TYPE_BRIDGE_OUT,
-            to,      // from (not really used for BridgeOut)
-            to,      // to
-            tokenId, // tokenId
+            address(0), // zero address - anyone can claim
+            to,         // destination address
+            tokenId,    // tokenId
             amount
         ));
         
@@ -106,6 +106,86 @@ contract CashlinkBridge is ICashlinkBridge {
         require(token.transfer(to, amount), "Token transfer failed");
         
         emit Claimed(batchId, orderId, to, tokenId, amount);
+    }
+
+    /**
+     * @dev Batch claim tokens for multiple wallets using Merkle proofs
+     * @param batchId The batch ID containing the orders
+     * @param claims Array of claim data for each wallet
+     */
+    function batchClaim(
+        uint256 batchId,
+        ClaimData[] calldata claims
+    ) external override {
+        if (claims.length == 0) {
+            revert EmptyClaimsArray();
+        }
+
+        // Get the batch data from the proof verifier
+        IProofVerifier.Batch memory batch = proofVerifier.getBatch(batchId);
+        
+        // Check if batch exists (verified)
+        if (batch.ordersRoot == bytes32(0)) {
+            revert BatchNotVerified();
+        }
+
+        uint256 totalAmount = 0;
+        uint256 successfulClaims = 0;
+
+        // Process each claim
+        for (uint256 i = 0; i < claims.length; i++) {
+            ClaimData calldata claimData = claims[i];
+            
+            // Skip if order has already been claimed
+            if (claimed[claimData.orderId]) {
+                continue;
+            }
+            
+            // Check if token is supported
+            address tokenAddress = supportedTokens[claimData.tokenId];
+            if (tokenAddress == address(0)) {
+                continue; // Skip unsupported tokens
+            }
+            
+            // Construct the order leaf for BridgeOut with destination address
+            bytes32 orderLeaf = keccak256(abi.encode(
+                batchId,
+                claimData.orderId,
+                ORDER_TYPE_BRIDGE_OUT,
+                address(0),                   // zero address - anyone can claim
+                claimData.destinationAddress, // destination address
+                claimData.tokenId,
+                claimData.amount
+            ));
+            
+            // Verify Merkle proof
+            if (!_verifyMerkleProof(claimData.merkleProof, orderLeaf, batch.ordersRoot)) {
+                continue; // Skip invalid proofs
+            }
+            
+            // Get token contract
+            IERC20 token = IERC20(tokenAddress);
+            
+            // Check contract has sufficient balance
+            if (token.balanceOf(address(this)) < claimData.amount) {
+                continue; // Skip if insufficient balance
+            }
+            
+            // Mark order as claimed
+            claimed[claimData.orderId] = true;
+            
+            // Transfer tokens to destination address
+            require(token.transfer(claimData.destinationAddress, claimData.amount), "Token transfer failed");
+            
+            // Emit individual claim event
+            emit Claimed(batchId, claimData.orderId, claimData.destinationAddress, claimData.tokenId, claimData.amount);
+            
+            totalAmount += claimData.amount;
+            successfulClaims++;
+        }
+
+        // Emit batch claim event
+        emit BatchClaimed(batchId, msg.sender, successfulClaims, totalAmount);
     }
     
     /**
