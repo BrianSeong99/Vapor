@@ -1,138 +1,178 @@
-# Vapor - P2P Offramp (PYUSD↔USD) MVP
+# Vapor - Private, Permissionless OffRamp
 
 ## Executive Summary
 
-Vapor is a P2P USD offramp focused on USDC/PYUSD ↔ USD built for the hackathon with a minimal trust-minimized architecture. We combine off-chain order matching and batching with on-chain ZK proof verification to create a scalable, privacy-preserving offramp solution.
+Vapor is a privacy-first P2P offramp system that enables users to convert PYUSD tokens to real-world fiat payments through a decentralized network of fillers. Built with a mobile-first approach, Vapor provides a seamless bridge between DeFi and traditional finance.
 
 ### Key Features
-- **On-chain**: Minimal ProofVerifierRegistry for batch-pinned roots and ZK proof verification
-- **Off-chain**: Order matching, account state management, SP1 ZK proof generation
-- **MVP Flow**: Bridge in → Order matching → Fiat confirmation → ZK proof → On-chain claim
+- **🔐 Private**: Order details remain confidential until matched
+- **⚡ Fast**: Real-time order matching and status updates
+- **📱 Mobile-First**: Responsive UI optimized for mobile devices
+- **🤝 P2P**: Direct filler-to-user payments via PayPal, Wise, Bank transfers
+- **🔄 Automated**: Auto-discovery and batch processing systems
 
 ## Problem Statement
 
-Current off-ramps are fragmented and opaque. Vapor provides:
-- ✅ Scalable off-chain performance (matching, batching, account trees)
-- ✅ Privacy preservation (account states not exposed publicly)
-- ✅ Verifiable batch outcomes via ZK proofs
-- ✅ Minimal on-chain footprint
-- ✅ Clean integration path for future ZK fiat attestations
+Current crypto off-ramps are:
+- **Centralized**: Single points of failure and control
+- **Expensive**: High fees and poor exchange rates
+- **Slow**: Multi-day settlement times
+- **Privacy-Poor**: Full transaction history exposed
+
+Vapor solves this with:
+- ✅ **Decentralized P2P matching**: No central authority
+- ✅ **Competitive rates**: Direct filler competition
+- ✅ **Instant settlements**: Real-time fiat payments
+- ✅ **Privacy-preserving**: Order details hidden until matched
 
 ## Architecture Overview
 
-### On-Chain Components
+### Frontend (Next.js)
+- **Mobile-First Design**: Responsive UI optimized for touch devices
+- **Wallet Integration**: Privy for seamless wallet connections
+- **Real-Time Updates**: 5-second polling for order status
+- **Multi-Flow Support**: Separate interfaces for sellers and fillers
 
-#### ProofVerifierRegistry Contract
-```solidity
-// Core functions
-function submitProof(
-    uint256 batchId,
-    uint256 prevBatchId,
-    bytes32 prevStateRoot,
-    bytes32 prevOrdersRoot,
-    bytes32 newStateRoot,
-    bytes32 newOrdersRoot,
-    bytes calldata proof
-) external;
+### Backend (Rust/Axum)
+- **REST API**: Comprehensive endpoints for orders, fillers, batches
+- **Order Management**: Complete lifecycle from creation to settlement
+- **Auto-Discovery**: Automated system to move orders to discovery phase
+- **Batch Processing**: Merkle tree generation and proof creation
+- **Matching Engine**: P2P order matching with filler selection
 
-function claim(
-    uint256 batchId,
-    uint256 orderId,
-    address to,
-    uint256 amount,
-    bytes32[] calldata proofPath
-) external;
-```
+### Database (SQLite)
+- **Orders Table**: Order details, status, filler assignments
+- **Fillers Table**: Filler balances, wallets, locked amounts
+- **Batches Table**: Batch data, state roots, proof information
 
-### Off-Chain Components
+### Blockchain Integration
+- **Local Anvil Node**: Development blockchain environment
+- **Smart Contracts**: Bridge contract, Proof verifier, USDC token
+- **PYUSD Support**: Full integration with PayPal USD token
 
-#### Order Types
-- **BridgeIn**: Credit seller on deposit
-- **Transfer**: Move funds seller→filler when fiat confirmed
-- **BridgeOut**: Debit filler balance, create withdrawal claim
+![Architecture](./pics/Architecture.png)
 
-#### SP1 Guest Program
-Validates batch transitions and enforces:
-- Balance invariants (non-negativity, conservation)
-- Lock semantics and timeouts
-- Merkle tree updates
-- Fiat confirmation rules
-
-## Data Flow
+## User Flow
 
 ```mermaid
 sequenceDiagram
-    participant Seller
-    participant L1
-    participant Relayer
-    participant Backend
-    participant Filler
-    participant SP1
-
-    Seller->>L1: sendOnChainDepositTx {amount}
-    L1-->>Relayer: DepositEvent(seller, amount)
-    Relayer->>Backend: emit BridgeIn order
-    Backend->>Backend: match order → filler_id, lock_expire
-    Filler->>Backend: POST /fiat/{order_id}/mark-paid
-    Backend->>Backend: emit Transfer(seller→filler)
-    Backend->>SP1: generate batch proof
-    SP1-->>Backend: ZK proof
-    Backend->>L1: submitProof(batchId, prevRoots, newRoots, zkProof)
-    Filler->>Backend: GET /orders/{batchId}/{orderId}/proof
-    Filler->>L1: claim(batchId, orderId, amount, proof)
-    L1-->>Filler: USDC transferred/minted
+    participant User as 👤 User
+    participant App as 🖥️ Vapor App
+    participant API as ⚙️ Backend
+    participant DB as 📊 Database
+    participant Filler as 🤝 Filler
+    participant Bank as 💰 Bank/PayPal
+    
+    Note over User,Bank: Simple Vapor Off-Ramp Flow
+    
+    %% Step 1: Create Order
+    User->>App: I want to cash out $1000 PYUSD
+    App->>User: Connect your wallet
+    User->>App: ✅ Wallet connected
+    App->>API: Create withdrawal order
+    API->>DB: Save order (Pending)
+    API-->>App: Order created
+    App->>User: Order submitted! 📝
+    
+    %% Step 2: Find Filler
+    Note over API,Filler: Auto-matching system
+    API->>DB: Move to Discovery
+    Filler->>API: Check for orders
+    API-->>Filler: Here's a $1000 order
+    Filler->>API: I'll take it!
+    API->>DB: Lock order for filler
+    
+    %% Step 3: Payment
+    Filler->>Bank: Send $1000 to user's PayPal
+    Bank-->>User: 💰 You received $1000!
+    Filler->>API: Payment sent, here's proof
+    API->>DB: Mark as paid
+    
+    %% Step 4: Completion
+    User->>App: Yes, I got the money! ✅
+    App->>API: Confirm receipt
+    API->>DB: Order complete
+    API->>Filler: Release your PYUSD tokens
+    
+    Note over User,Bank: Done! PYUSD → Real Money 🎉
 ```
 
-## State Model
+## Order Lifecycle
 
-### State Tree (Private Off-chain)
-- **Leaf**: `L_acc = H(addr, usdc_balance)`
-- **Root**: Committed on-chain per batch (balances remain private)
+### Order States
+1. **Pending** → Order created, waiting for blockchain confirmation
+2. **Discovery** → Available for fillers to view and lock
+3. **Locked** → Filler has committed to fulfill the order
+4. **MarkPaid** → Filler has submitted payment proof
+5. **Settled** → Order complete, funds released
 
-### Orders Tree (Private Off-chain)
-- **Leaf**: `L_order = keccak256(abi.encode(batchId, orderId, kind, from, to, tokenId, amount))`
-- **Kind**: 0=BridgeIn, 1=BridgeOut, 2=Transfer
-- **Claims**: Only valid for kind=1 (BridgeOut) leaves
+### Order Types
+- **BridgeIn**: User deposits PYUSD, wants fiat
+- **Transfer**: Internal transfer between accounts (seller → filler)
+- **BridgeOut**: Filler withdraws tokens after providing fiat
 
-### Batch Structure
-```json
-{
-  "prevStateRoot": "0x...",
-  "prevOrderBookRoot": "0x...",
-  "orders": [],
-  "newStateRoot": "0x...",
-  "newOrderBookRoot": "0x..."
-}
-```
+### Auto-Discovery Process
+- Runs every 5 seconds
+- Moves `Pending` BridgeIn orders to `Discovery` status
+- Excludes Transfer orders (handled by batch processor)
 
 ## API Reference
 
-### REST Endpoints
-
-#### Order Management
+### Order Management
 ```http
-POST /order/sell
+# Create new order
+POST /api/v1/orders
 Content-Type: application/json
-
 {
-  "amount": "100.00",
-  "seller_address": "0x..."
+  "order_type": "BridgeIn",
+  "from_address": "0x...",
+  "to_address": "0x...",
+  "token_id": 2,
+  "amount": "1000",
+  "bank_account": "841273-1283712",
+  "bank_service": "PayPal Hong Kong",
+  "banking_hash": "0x..."
 }
+
+# Get order status
+GET /api/v1/orders/{order_id}/status
+
+# List orders
+GET /api/v1/orders?status=discovery&limit=10
 ```
 
-#### Fiat Confirmation (MVP Simplified)
+### Filler Operations
 ```http
-POST /fiat/{orderId}/mark-paid
+# Get available orders
+GET /api/v1/fillers/discovery
+
+# Lock order
+POST /api/v1/fillers/orders/{order_id}/lock
+{
+  "filler_id": "filler-123",
+  "amount": "1000"
+}
+
+# Submit payment proof
+POST /api/v1/fillers/orders/{order_id}/payment-proof
+{
+  "banking_hash": "0x..."
+}
+
+# Get filler balance
+GET /api/v1/fillers/{filler_id}/balance
 ```
 
-#### Batch Operations
+### Batch Processing
 ```http
-POST /batch/prove-and-submit
-```
+# Start new batch
+POST /api/v1/batch/start
 
-#### Proof Service
-```http
-GET /orders/{batchId}/{orderId}/proof
+# Finalize batch
+POST /api/v1/batch/finalize
+
+# Get batch stats
+GET /api/v1/batch/stats
 ```
 
 ## Quick Start
@@ -141,160 +181,139 @@ GET /orders/{batchId}/{orderId}/proof
 - Rust (latest stable)
 - Node.js 18+
 - Foundry
-- Docker (optional)
+- Git
 
 ### Setup
 
-1. **Clone and install dependencies**
+1. **Clone the repository**
 ```bash
-git clone https://github.com/BrianSeong99/Cashlink
-cd Cashlink
-cargo build --release
-npm install
+git clone https://github.com/your-org/Chainless
+cd Chainless/Vapor
 ```
 
-2. **Deploy contracts**
+2. **Start the blockchain (Terminal 1)**
+```bash
+cd contracts
+anvil
+```
+
+3. **Deploy contracts (Terminal 2)**
 ```bash
 cd contracts
 forge build
-forge script script/Deploy.s.sol --rpc-url <RPC_URL> --broadcast
+forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 ```
 
-3. **Start the backend**
+4. **Start the backend (Terminal 3)**
 ```bash
-cargo run --bin cashlink-server
+cd backend
+cargo run
 ```
 
-4. **Run demo flow**
+5. **Start the frontend (Terminal 4)**
 ```bash
-./scripts/happy_path.sh
+cd frontend
+npm install
+npm run dev
 ```
 
-### Demo Scripts
+6. **Access the application**
+- Frontend: http://localhost:8080
+- Backend API: http://localhost:3000
 
-#### Seed Initial State
-```bash
-./scripts/seed.sh
-# Seeds seller with USDC and sets up initial balances
+### Demo Flow
+
+1. **Fund your wallet with PYUSD**
+   - Use the navigation panel's "Fund" button
+   - Or manually send PYUSD to your wallet address
+
+2. **Create a withdrawal order**
+   - Enter amount and bank details
+   - Connect wallet and approve transaction
+   - Confirm the deposit
+
+3. **Monitor order status**
+   - Watch the 4-step progress tracker
+   - Status updates every 5 seconds
+
+4. **Filler interface**
+   - Navigate to `/filler` to see available orders
+   - Lock and fulfill orders as a filler
+
+## Development
+
+### Project Structure
+```
+Vapor/
+├── frontend/          # Next.js React app
+├── backend/           # Rust Axum API server
+├── contracts/         # Solidity smart contracts
+└── scripts/          # Deployment and utility scripts
 ```
 
-#### Happy Path Demo
-```bash
-./scripts/happy_path.sh
-# Runs complete flow: deposit → match → mark paid → batch → claim
-```
-
-## Development Workflow
-
-### Local Development
-1. Start local anvil chain: `anvil`
-2. Deploy contracts: `forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast`
-3. Start backend: `cargo run --bin cashlink-server`
-4. Run tests: `cargo test`
-
-### Testing
-```bash
-# Unit tests
-cargo test
-
-# Integration tests
-cargo test --test integration
-
-# Contract tests
-forge test
-```
+### Key Technologies
+- **Frontend**: Next.js 15, React 19, Privy, Wagmi, Tailwind CSS
+- **Backend**: Rust, Axum, SQLite, Tokio
+- **Blockchain**: Foundry, Anvil, Solidity
+- **Database**: SQLite with migrations
 
 ## Configuration
 
-### Environment Variables
+### Backend Configuration
+The backend uses environment variables and a SQLite database:
+
 ```env
-# Blockchain
-RPC_URL=http://localhost:8545
-PRIVATE_KEY=0x...
-CONTRACT_ADDRESS=0x...
+# Default settings
+PORT=3000
+DATABASE_URL=sqlite:vapor_dev.db
+RUST_LOG=info
+```
 
-# SP1
-SP1_PROVER=network  # or "local"
-SP1_PRIVATE_KEY=...
-
-# API
+### Frontend Configuration
+```env
+# Next.js settings
 PORT=8080
-DATABASE_URL=sqlite:cashlink.db
+NEXT_PUBLIC_API_URL=http://localhost:3000
 ```
 
-### Config File (`config.toml`)
-```toml
-[blockchain]
-rpc_url = "http://localhost:8545"
-contract_address = "0x..."
-
-[sp1]
-prover = "network"
-program_id = "0x..."
-
-[api]
-host = "0.0.0.0"
-port = 8080
-
-[batch]
-interval_seconds = 60
-max_orders_per_batch = 100
+### Smart Contract Addresses
+```env
+# Local Anvil deployment
+BRIDGE_CONTRACT=0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
+PROOF_VERIFIER=0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0
+USDC_TOKEN=0x5fbdb2315678afecb367f032d93f642f64180aa3
 ```
 
-## Security Considerations
+## Features
 
-### MVP Limitations
-- ⚠️ Fiat confirmation uses backend "Mark Paid" (not ZK-verified)
-- ⚠️ Bank integration stubbed for hackathon
-- ⚠️ Single operator model (not decentralized)
+### ✅ Current Implementation
+- **Order Creation**: Complete PYUSD deposit and order creation flow
+- **Auto-Discovery**: Automated order progression (Pending → Discovery)
+- **Filler Matching**: P2P order locking and fulfillment
+- **Status Tracking**: Real-time progress updates with 4-step UI
+- **Payment Processing**: Filler payment proof submission
+- **Batch Processing**: Merkle tree generation and state management
+- **Mobile UI**: Responsive design optimized for mobile devices
+- **Wallet Integration**: Privy wallet with PYUSD support
 
-### Production Roadmap
-- [ ] ZK-verified fiat settlements
-- [ ] Decentralized operator network
-- [ ] Multi-asset support
-- [ ] Advanced matching algorithms
-
-## Acceptance Criteria
-
-- ✅ Seller deposit triggers BridgeIn order with State Tree update
-- ✅ Lock + Mark Paid produces Transfer order with SP1 validation
-- ✅ Batch proving posts both stateRoot and ordersRoot via submitProof
-- ✅ Filler can fetch Merkle proof and claim BridgeOut successfully
-- ✅ Double-claim prevention via spent[orderId] nullifier
-
-## Project Structure
-
-```
-Cashlink/
-├── src/
-│   ├── main.rs              # Server entry point
-│   ├── api/                 # REST API handlers
-│   ├── orders/              # Order management
-│   ├── matching/            # Order matching engine
-│   ├── batch/               # Batch processing
-│   ├── sp1/                 # ZK proof generation
-│   └── merkle/              # Merkle tree operations
-├── contracts/
-│   ├── src/
-│   │   └── ProofVerifierRegistry.sol
-│   └── script/
-│       └── Deploy.s.sol
-├── scripts/
-│   ├── seed.sh
-│   └── happy_path.sh
-└── tests/
-    ├── integration/
-    └── unit/
-```
+### 🚧 Future Enhancements
+- [ ] ZK proof verification for fiat settlements
+- [ ] Multi-asset support (USDC, other stablecoins)
+- [ ] Advanced matching algorithms with price discovery
+- [ ] Decentralized filler network
+- [ ] Cross-chain support
+- [ ] Enhanced privacy features
 
 ## Contributing
 
-This is a hackathon MVP focused on demonstrating core functionality. For production development:
+This project demonstrates a privacy-first P2P offramp system. To contribute:
 
 1. Fork the repository
-2. Create feature branch
-3. Add tests for new functionality
-4. Submit pull request with detailed description
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes and add tests
+4. Commit your changes (`git commit -m 'Add amazing feature'`)
+5. Push to the branch (`git push origin feature/amazing-feature`)
+6. Open a Pull Request
 
 ## License
 
@@ -302,4 +321,6 @@ MIT License - see LICENSE file for details
 
 ---
 
-**Built for EthNYC - Demonstrating the future of trust-minimized P2P offramps**
+**🌊 Vapor - Turn your crypto into cash, privately and instantly**
+
+*Built with ❤️ for the future of decentralized finance*
