@@ -1,37 +1,72 @@
 [
   {
-    "type": "function",
-    "name": "deposit",
-    "inputs": [
-      {"name": "tokenId", "type": "uint32"},
-      {"name": "amount", "type": "uint256"},
-      {"name": "bankingHash", "type": "bytes32"}
-    ],
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}, {"internalType": "address", "name": "tokenAddress", "type": "address"}],
+    "name": "addSupportedToken",
     "outputs": [],
-    "stateMutability": "nonpayable"
+    "stateMutability": "nonpayable",
+    "type": "function"
   },
   {
-    "type": "function", 
+    "inputs": [{"internalType": "uint256", "name": "batchId", "type": "uint256"}, {"internalType": "uint256", "name": "orderId", "type": "uint256"}, {"internalType": "address", "name": "to", "type": "address"}, {"internalType": "uint256", "name": "tokenId", "type": "uint256"}, {"internalType": "uint256", "name": "amount", "type": "uint256"}, {"internalType": "bytes32[]", "name": "merkleProof", "type": "bytes32[]"}],
     "name": "claim",
-    "inputs": [
-      {"name": "batchId", "type": "uint32"},
-      {"name": "orderId", "type": "uint32"},
-      {"name": "to", "type": "address"},
-      {"name": "tokenId", "type": "uint32"},
-      {"name": "amount", "type": "uint256"},
-      {"name": "proof", "type": "bytes32[]"}
-    ],
     "outputs": [],
-    "stateMutability": "nonpayable"
+    "stateMutability": "nonpayable",
+    "type": "function"
   },
   {
-    "type": "event",
-    "name": "Deposit",
-    "inputs": [
-      {"name": "user", "type": "address", "indexed": true},
-      {"name": "tokenId", "type": "uint32", "indexed": true},
-      {"name": "amount", "type": "uint256", "indexed": false},
-      {"name": "bankingHash", "type": "bytes32", "indexed": false}
-    ]
+    "inputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "name": "claimed",
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}, {"internalType": "uint256", "name": "amount", "type": "uint256"}, {"internalType": "bytes32", "name": "bankingHash", "type": "bytes32"}],
+    "name": "deposit",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+    "name": "getSupportedToken",
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+    "name": "getTokenBalance",
+    "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "orderId", "type": "uint256"}],
+    "name": "isClaimed",
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"internalType": "uint256", "name": "tokenId", "type": "uint256"}],
+    "name": "isTokenSupported",
+    "outputs": [{"internalType": "bool", "name": "", "type": "bool"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [{"internalType": "address", "name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "proofVerifier",
+    "outputs": [{"internalType": "contract IProofVerifier", "name": "", "type": "address"}],
+    "stateMutability": "view",
+    "type": "function"
   }
 ]

@@ -60,13 +60,17 @@ async fn main() -> anyhow::Result<()> {
     let bridge_address = config.blockchain.contract_address.parse()
         .map_err(|_| anyhow::anyhow!("Invalid CONTRACT_ADDRESS format"))?;
     
-    // For MVP, use a placeholder USDC address (will be set during contract deployment)
-    let usdc_address = "0x0000000000000000000000000000000000000000".parse()
+    // For MVP, use placeholder addresses (will be set during contract deployment)
+    let proof_verifier_address = "0x0000000000000000000000000000000000000001".parse()
+        .map_err(|_| anyhow::anyhow!("Invalid ProofVerifier address format"))?;
+    
+    let usdc_address = "0x0000000000000000000000000000000000000002".parse()
         .map_err(|_| anyhow::anyhow!("Invalid USDC address format"))?;
     
     let blockchain_client = crate::blockchain::BlockchainClient::new(
         config.blockchain.rpc_url.clone(),
         bridge_address,
+        proof_verifier_address,
         usdc_address,
         1, // Chain ID (anvil default)
     ).await?;
