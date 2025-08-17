@@ -208,7 +208,6 @@ pub struct ClaimRequest {
 /// Individual wallet claim
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WalletClaim {
-    pub wallet_address: String,
     pub amount: String,
     pub destination_address: String, // Where to send the claimed tokens
 }
@@ -225,7 +224,6 @@ pub struct ClaimResponse {
 /// Individual processed claim
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessedClaim {
-    pub wallet_address: String,
     pub amount: String,
     pub destination_address: String,
     pub merkle_proof: Vec<String>,

@@ -254,12 +254,34 @@ impl SparseMerkleLeaf for Order {
 impl Order {
     /// Hash leaf with batch ID context
     pub fn hash_leaf_with_batch_id(&self, batch_id: u32) -> Result<[u8; 32]> {
+        // Determine source and destination addresses based on order type
+        let (source_addr, dest_addr) = match self.order_type {
+            crate::models::OrderType::BridgeIn => {
+                // Bridge-in: source and destination are the same (user's wallet address)
+                let user_addr = self.from_address.clone().unwrap_or_default();
+                (user_addr.clone(), user_addr)
+            },
+            crate::models::OrderType::BridgeOut => {
+                // Bridge-out: source is zero address, destination is specified address
+                let zero_addr = "0x0000000000000000000000000000000000000000".to_string();
+                let dest_addr = self.to_address.clone().unwrap_or_default();
+                (zero_addr, dest_addr)
+            },
+            crate::models::OrderType::Transfer => {
+                // Transfer: use addresses as specified
+                (
+                    self.from_address.clone().unwrap_or_default(),
+                    self.to_address.clone().unwrap_or_default()
+                )
+            },
+        };
+
         let leaf_hash = solidity_order_leaf_hash(
             batch_id,
             &self.id,
             self.order_type as u8,
-            &self.from_address.clone().unwrap_or_default(),
-            &self.to_address.clone().unwrap_or_default(),
+            &source_addr,
+            &dest_addr,
             self.token_id,
             &self.amount,
         );

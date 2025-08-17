@@ -281,6 +281,141 @@ pub mod helpers {
         sqlx::query("DELETE FROM account_balances").execute(pool).await?;
         Ok(())
     }
+
+    /// Get filler balance by filler ID
+    pub async fn get_filler_balance(pool: &SqlitePool, filler_id: &str) -> Result<Option<FillerBalance>> {
+        // Get main balance info
+        let balance_row = sqlx::query(
+            "SELECT filler_id, total_balance, locked_balance, completed_jobs FROM filler_balances WHERE filler_id = ?"
+        )
+        .bind(filler_id)
+        .fetch_optional(pool)
+        .await?;
+
+        let Some(row) = balance_row else {
+            return Ok(None);
+        };
+
+        let total_balance: String = row.try_get("total_balance")?;
+        let locked_balance: String = row.try_get("locked_balance")?;
+        let completed_jobs: i32 = row.try_get("completed_jobs")?;
+
+        // Calculate available balance
+        let total: u64 = total_balance.parse().unwrap_or(0);
+        let locked: u64 = locked_balance.parse().unwrap_or(0);
+        let available_balance = (total.saturating_sub(locked)).to_string();
+
+        // Get wallets for this filler
+        let wallet_rows = sqlx::query(
+            "SELECT wallet_address, balance FROM filler_wallets WHERE filler_id = ?"
+        )
+        .bind(filler_id)
+        .fetch_all(pool)
+        .await?;
+
+        let wallets: Vec<FillerWallet> = wallet_rows
+            .iter()
+            .map(|row| {
+                let balance: String = row.try_get("balance").unwrap_or_default();
+                let wallet_balance: u64 = balance.parse().unwrap_or(0);
+                let percentage = if total > 0 {
+                    (wallet_balance as f32 / total as f32) * 100.0
+                } else {
+                    0.0
+                };
+
+                FillerWallet {
+                    address: row.try_get("wallet_address").unwrap_or_default(),
+                    balance,
+                    percentage,
+                }
+            })
+            .collect();
+
+        Ok(Some(FillerBalance {
+            filler_id: filler_id.to_string(),
+            total_balance,
+            available_balance,
+            locked_balance,
+            completed_jobs: completed_jobs as u32,
+            wallets,
+        }))
+    }
+
+    /// Create or update filler balance
+    pub async fn upsert_filler_balance(pool: &SqlitePool, filler_id: &str, total_balance: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO filler_balances (filler_id, total_balance) 
+            VALUES (?, ?)
+            ON CONFLICT(filler_id) 
+            DO UPDATE SET 
+                total_balance = excluded.total_balance,
+                updated_at = CURRENT_TIMESTAMP
+            "#
+        )
+        .bind(filler_id)
+        .bind(total_balance)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Add wallet to filler
+    pub async fn add_filler_wallet(pool: &SqlitePool, filler_id: &str, wallet_address: &str, balance: &str) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO filler_wallets (filler_id, wallet_address, balance) 
+            VALUES (?, ?, ?)
+            ON CONFLICT(filler_id, wallet_address) 
+            DO UPDATE SET 
+                balance = excluded.balance,
+                updated_at = CURRENT_TIMESTAMP
+            "#
+        )
+        .bind(filler_id)
+        .bind(wallet_address)
+        .bind(balance)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Update filler locked balance
+    pub async fn update_filler_locked_balance(pool: &SqlitePool, filler_id: &str, locked_balance: &str) -> Result<()> {
+        sqlx::query(
+            "UPDATE filler_balances SET locked_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE filler_id = ?"
+        )
+        .bind(locked_balance)
+        .bind(filler_id)
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Record a claim
+    pub async fn insert_claim(pool: &SqlitePool, claim_id: &str, filler_id: &str, wallet_address: &str, 
+                            destination_address: &str, amount: &str, batch_id: Option<u32>) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO claims (id, filler_id, wallet_address, destination_address, amount, batch_id) 
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#
+        )
+        .bind(claim_id)
+        .bind(filler_id)
+        .bind(wallet_address)
+        .bind(destination_address)
+        .bind(amount)
+        .bind(batch_id.map(|id| id as i32))
+        .execute(pool)
+        .await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -573,138 +708,5 @@ mod tests {
         assert_eq!(balances[0].balance, large_amount, "Should preserve large balance precision");
     }
 
-    /// Get filler balance by filler ID
-    pub async fn get_filler_balance(pool: &SqlitePool, filler_id: &str) -> Result<Option<FillerBalance>> {
-        // Get main balance info
-        let balance_row = sqlx::query(
-            "SELECT filler_id, total_balance, locked_balance, completed_jobs FROM filler_balances WHERE filler_id = ?"
-        )
-        .bind(filler_id)
-        .fetch_optional(pool)
-        .await?;
 
-        let Some(row) = balance_row else {
-            return Ok(None);
-        };
-
-        let total_balance: String = row.try_get("total_balance")?;
-        let locked_balance: String = row.try_get("locked_balance")?;
-        let completed_jobs: i32 = row.try_get("completed_jobs")?;
-
-        // Calculate available balance
-        let total: u64 = total_balance.parse().unwrap_or(0);
-        let locked: u64 = locked_balance.parse().unwrap_or(0);
-        let available_balance = (total.saturating_sub(locked)).to_string();
-
-        // Get wallets for this filler
-        let wallet_rows = sqlx::query(
-            "SELECT wallet_address, balance FROM filler_wallets WHERE filler_id = ?"
-        )
-        .bind(filler_id)
-        .fetch_all(pool)
-        .await?;
-
-        let wallets: Vec<FillerWallet> = wallet_rows
-            .iter()
-            .map(|row| {
-                let balance: String = row.try_get("balance").unwrap_or_default();
-                let wallet_balance: u64 = balance.parse().unwrap_or(0);
-                let percentage = if total > 0 {
-                    (wallet_balance as f32 / total as f32) * 100.0
-                } else {
-                    0.0
-                };
-
-                FillerWallet {
-                    address: row.try_get("wallet_address").unwrap_or_default(),
-                    balance,
-                    percentage,
-                }
-            })
-            .collect();
-
-        Ok(Some(FillerBalance {
-            filler_id: filler_id.to_string(),
-            total_balance,
-            available_balance,
-            locked_balance,
-            completed_jobs: completed_jobs as u32,
-            wallets,
-        }))
-    }
-
-    /// Create or update filler balance
-    pub async fn upsert_filler_balance(pool: &SqlitePool, filler_id: &str, total_balance: &str) -> Result<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO filler_balances (filler_id, total_balance) 
-            VALUES (?, ?)
-            ON CONFLICT(filler_id) 
-            DO UPDATE SET 
-                total_balance = excluded.total_balance,
-                updated_at = CURRENT_TIMESTAMP
-            "#
-        )
-        .bind(filler_id)
-        .bind(total_balance)
-        .execute(pool)
-        .await?;
-
-        Ok(())
-    }
-
-    /// Add wallet to filler
-    pub async fn add_filler_wallet(pool: &SqlitePool, filler_id: &str, wallet_address: &str, balance: &str) -> Result<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO filler_wallets (filler_id, wallet_address, balance) 
-            VALUES (?, ?, ?)
-            ON CONFLICT(filler_id, wallet_address) 
-            DO UPDATE SET 
-                balance = excluded.balance,
-                updated_at = CURRENT_TIMESTAMP
-            "#
-        )
-        .bind(filler_id)
-        .bind(wallet_address)
-        .bind(balance)
-        .execute(pool)
-        .await?;
-
-        Ok(())
-    }
-
-    /// Update filler locked balance
-    pub async fn update_filler_locked_balance(pool: &SqlitePool, filler_id: &str, locked_balance: &str) -> Result<()> {
-        sqlx::query(
-            "UPDATE filler_balances SET locked_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE filler_id = ?"
-        )
-        .bind(locked_balance)
-        .bind(filler_id)
-        .execute(pool)
-        .await?;
-
-        Ok(())
-    }
-
-    /// Record a claim
-    pub async fn insert_claim(pool: &SqlitePool, claim_id: &str, filler_id: &str, wallet_address: &str, 
-                            destination_address: &str, amount: &str, batch_id: Option<u32>) -> Result<()> {
-        sqlx::query(
-            r#"
-            INSERT INTO claims (id, filler_id, wallet_address, destination_address, amount, batch_id) 
-            VALUES (?, ?, ?, ?, ?, ?)
-            "#
-        )
-        .bind(claim_id)
-        .bind(filler_id)
-        .bind(wallet_address)
-        .bind(destination_address)
-        .bind(amount)
-        .bind(batch_id.map(|id| id as i32))
-        .execute(pool)
-        .await?;
-
-        Ok(())
-    }
 }

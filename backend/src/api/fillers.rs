@@ -146,27 +146,19 @@ pub async fn lock_order(
         return Err(StatusCode::CONFLICT);
     }
 
-    // Fetch updated order
-    let updated_row = sqlx::query("SELECT id, order_type, status, from_address, to_address, token_id, amount, bank_account, bank_service, banking_hash, filler_id, locked_amount, batch_id, created_at, updated_at FROM orders WHERE id = $1")
-        .bind(&order_id)
-        .fetch_one(&app_state.db)
+    // Fetch updated order using the database helper
+    let updated_order = crate::database::helpers::get_order_by_id(&app_state.db, &order_id)
         .await
         .map_err(|e| {
             error!("Database error fetching updated order: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or_else(|| {
+            error!("Order {} disappeared after update", order_id);
+            StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let order_response = OrderResponse {
-        id: updated_row.try_get("id").unwrap_or_default(),
-        order_type: OrderType::from(updated_row.try_get::<i32, _>("order_type").unwrap_or(0)),
-        status: OrderStatus::from(updated_row.try_get::<i32, _>("status").unwrap_or(0)),
-        amount: updated_row.try_get("amount").unwrap_or_default(),
-        bank_account: updated_row.try_get("bank_account").ok(),
-        bank_service: updated_row.try_get("bank_service").ok(),
-        filler_id: updated_row.try_get("filler_id").ok(),
-        locked_amount: updated_row.try_get("locked_amount").ok(),
-        created_at: updated_row.try_get("created_at").unwrap_or_default(),
-    };
+    let order_response = OrderResponse::from(&updated_order);
 
     info!("Order {} successfully locked for filler {}", order_id, req.filler_id);
     Ok(Json(order_response))
@@ -312,33 +304,31 @@ pub async fn claim_tokens(
     let mut processed_claims = Vec::new();
     let mut total_claimed = 0u64;
 
-    for claim in &req.claims {
-        let claim_amount: u64 = claim.amount.parse().map_err(|_| {
-            error!("Invalid claim amount: {}", claim.amount);
-            StatusCode::BAD_REQUEST
-        })?;
+            for claim in &req.claims {
+            let claim_amount: u64 = claim.amount.parse().map_err(|_| {
+                error!("Invalid claim amount: {}", claim.amount);
+                StatusCode::BAD_REQUEST
+            })?;
 
-        // Create bridge-out order for this claim
-        let bridge_out_order = create_bridge_out_order(
-            &claim.wallet_address,
-            &claim.destination_address,
-            &claim.amount,
-        );
+            // Create bridge-out order for this claim (anyone can claim, no source wallet needed)
+            let bridge_out_order = create_bridge_out_order(
+                &claim.destination_address,
+                &claim.amount,
+            );
 
-        // Generate merkle proof (this would integrate with the actual merkle tree)
-        let merkle_proof = generate_mock_merkle_proof(&bridge_out_order);
+            // Generate merkle proof (this would integrate with the actual merkle tree)
+            let merkle_proof = generate_mock_merkle_proof(&bridge_out_order);
 
-        processed_claims.push(ProcessedClaim {
-            wallet_address: claim.wallet_address.clone(),
-            amount: claim.amount.clone(),
-            destination_address: claim.destination_address.clone(),
-            merkle_proof,
-            success: true,
-            error: None,
-        });
+            processed_claims.push(ProcessedClaim {
+                amount: claim.amount.clone(),
+                destination_address: claim.destination_address.clone(),
+                merkle_proof,
+                success: true,
+                error: None,
+            });
 
-        total_claimed += claim_amount;
-    }
+            total_claimed += claim_amount;
+        }
 
     // TODO: Submit batch claim to smart contract
     // This would involve calling the smart contract's batch claim function
@@ -359,13 +349,12 @@ pub async fn claim_tokens(
 
 /// Helper function to create a bridge-out order
 fn create_bridge_out_order(
-    from_address: &str, 
-    to_address: &str, 
+    destination_address: &str, // Where tokens should be sent 
     amount: &str
 ) -> BridgeOutOrder {
     BridgeOutOrder {
-        from_address: from_address.to_string(),
-        to_address: to_address.to_string(),
+        from_address: "0x0000000000000000000000000000000000000000".to_string(), // zero address - anyone can claim
+        to_address: destination_address.to_string(),  // destination
         amount: amount.to_string(),
         token_id: 1, // USDC
     }
@@ -395,11 +384,21 @@ fn generate_mock_merkle_proof(order: &BridgeOutOrder) -> Vec<String> {
 async fn submit_batch_claim_to_contract(claims: &[ProcessedClaim]) -> Option<String> {
     // This is a mock implementation
     // In reality, this would:
-    // 1. Create the batch claim transaction
-    // 2. Generate the merkle root for all claims
-    // 3. Submit to the smart contract
-    // 4. Return the transaction hash
+    // 1. Create ClaimData array for the smart contract
+    // 2. Call batchClaim(batchId, ClaimData[] claims)
+    // 3. Each ClaimData contains:
+    //    - orderId: unique order identifier
+    //    - destinationAddress: where tokens should be sent
+    //    - tokenId: token identifier (e.g., 1 for USDC)
+    //    - amount: amount to claim
+    //    - merkleProof: proof array for verification
+    // 4. Smart contract verifies each claim and transfers tokens
+    // 5. Emits BatchClaimed event with total claims and amount
+    // 6. Return the transaction hash
     
-    info!("Mock: Submitting {} claims to smart contract", claims.len());
+    info!("Mock: Submitting batch claim with {} claims to CashlinkBridge.batchClaim()", claims.len());
+    info!("Mock: Each claim will recreate leaf: keccak256(abi.encode(batchId, orderId, ORDER_TYPE_BRIDGE_OUT, address(0), destinationAddress, tokenId, amount))");
+    
+    // Simulate successful batch claim transaction
     Some("0x1234567890abcdef1234567890abcdef12345678".to_string())
 }
