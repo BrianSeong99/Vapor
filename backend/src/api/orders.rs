@@ -204,6 +204,30 @@ pub async fn mark_paid(
                 updated_at: Utc::now(),
             };
 
+            // Save Transfer order to database
+            let transfer_query = r#"
+                INSERT INTO orders (id, order_type, status, from_address, to_address, token_id, amount, banking_hash, created_at, updated_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            "#;
+            
+            sqlx::query(transfer_query)
+                .bind(&transfer_order.id)
+                .bind(transfer_order.order_type as i32)
+                .bind(transfer_order.status as i32)
+                .bind(&transfer_order.from_address)
+                .bind(&transfer_order.to_address)
+                .bind(transfer_order.token_id as i32)
+                .bind(&transfer_order.amount)
+                .bind(&transfer_order.banking_hash)
+                .bind(transfer_order.created_at)
+                .bind(transfer_order.updated_at)
+                .execute(&app_state.db)
+                .await
+                .map_err(|e| {
+                    error!("Failed to save transfer order to database: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+
             // Add Transfer order to batch
             let mut processor = app_state.batch_processor.lock().await;
             if processor.get_current_batch().is_none() {

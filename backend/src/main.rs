@@ -119,18 +119,20 @@ async fn main() -> anyhow::Result<()> {
             // Wait 5 seconds between checks
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
             
-            // Get all pending orders and move them to discovery
-            let query = "UPDATE orders SET status = $1, updated_at = $2 WHERE status = $3";
+            // Get all pending BridgeIn orders and move them to discovery
+            // Exclude Transfer orders as they should be processed by batch processor
+            let query = "UPDATE orders SET status = $1, updated_at = $2 WHERE status = $3 AND order_type = $4";
             match sqlx::query(query)
                 .bind(crate::models::OrderStatus::Discovery as i32)
                 .bind(chrono::Utc::now())
                 .bind(crate::models::OrderStatus::Pending as i32)
+                .bind(crate::models::OrderType::BridgeIn as i32)
                 .execute(&discovery_db)
                 .await
             {
                 Ok(result) => {
                     if result.rows_affected() > 0 {
-                        info!("Auto-discovery: Moved {} orders from Pending to Discovery", result.rows_affected());
+                        info!("Auto-discovery: Moved {} BridgeIn orders from Pending to Discovery", result.rows_affected());
                     }
                 }
                 Err(e) => {
@@ -140,7 +142,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
     
-    info!("Auto-discovery service started - will move Pending orders to Discovery every 5 seconds");
+    info!("Auto-discovery service started - will move Pending BridgeIn orders to Discovery every 5 seconds");
 
     // Build our application with routes
     let app = Router::new()

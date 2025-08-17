@@ -124,7 +124,7 @@ export default function StatusPage() {
         setCurrentStep(3);
         setIsComplete(false);
         break;
-      case 'mark_paid':
+      case 'markpaid':
       case 'settled':
         setCurrentStep(4);
         setIsComplete(true);
