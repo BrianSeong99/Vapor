@@ -104,15 +104,35 @@ setup_blockchain() {
         return 1
     fi
     
-    # Add USDC as supported token
-    log_info "Configuring VaporBridge..."
+    # Add USDC as supported token (Token ID 1)
+    log_info "Configuring VaporBridge - Adding MockUSDC as Token ID 1..."
     cast send $VAPOR_BRIDGE_ADDRESS "addSupportedToken(uint256,address)" 1 $USDC_ADDRESS \
+        --rpc-url http://localhost:$ANVIL_PORT \
+        --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 > /dev/null
+    
+    # Deploy MockPYUSD for testing
+    log_info "Deploying MockPYUSD..."
+    PYUSD_DEPLOY=$(forge create --rpc-url http://localhost:$ANVIL_PORT \
+        --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
+        src/MockUSDC.sol:MockUSDC \
+        --constructor-args "PayPal USD" "PYUSD" 6 2>&1)
+    
+    PYUSD_ADDRESS=$(echo "$PYUSD_DEPLOY" | grep "Deployed to:" | awk '{print $3}')
+    if [ -z "$PYUSD_ADDRESS" ]; then
+        log_error "Failed to deploy MockPYUSD"
+        return 1
+    fi
+    
+    # Add PYUSD as supported token (Token ID 2)
+    log_info "Configuring VaporBridge - Adding MockPYUSD as Token ID 2..."
+    cast send $VAPOR_BRIDGE_ADDRESS "addSupportedToken(uint256,address)" 2 $PYUSD_ADDRESS \
         --rpc-url http://localhost:$ANVIL_PORT \
         --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 > /dev/null
     
     log_success "All contracts deployed successfully!"
     log_info "Contract Addresses:"
-    log_info "  MockUSDC: $USDC_ADDRESS"
+    log_info "  MockUSDC (Token ID 1): $USDC_ADDRESS"
+    log_info "  MockPYUSD (Token ID 2): $PYUSD_ADDRESS"
     log_info "  MockSP1Verifier: $MOCK_SP1_ADDRESS"
     log_info "  ProofVerifier: $PROOF_VERIFIER_ADDRESS"
     log_info "  VaporBridge: $VAPOR_BRIDGE_ADDRESS"
@@ -121,6 +141,7 @@ setup_blockchain() {
     cat > ../deployed_addresses.env << EOF
 # Vapor Contract Addresses (Generated $(date))
 USDC_ADDRESS=$USDC_ADDRESS
+PYUSD_ADDRESS=$PYUSD_ADDRESS
 MOCK_SP1_ADDRESS=$MOCK_SP1_ADDRESS
 PROOF_VERIFIER_ADDRESS=$PROOF_VERIFIER_ADDRESS
 VAPOR_BRIDGE_ADDRESS=$VAPOR_BRIDGE_ADDRESS
@@ -129,7 +150,7 @@ EOF
     log_info "📄 Contract addresses saved to: deployed_addresses.env"
     
     # Setup test accounts
-    log_step "Setting up test accounts with USDC..."
+    log_step "Setting up test accounts with USDC and PYUSD..."
     
     TEST_ACCOUNTS=(
         "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"  # Account 0
@@ -141,7 +162,7 @@ EOF
     
     for i in "${!TEST_ACCOUNTS[@]}"; do
         local address=${TEST_ACCOUNTS[$i]}
-        local usdc_amount=$((1000 * 10**6)) # 1000 USDC
+        local token_amount=$((1000 * 10**6)) # 1000 tokens (6 decimals)
         local eth_amount="10000000000000000000" # 10 ETH in wei
         
         # Send ETH for gas fees
@@ -150,14 +171,19 @@ EOF
             --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 > /dev/null
         
         # Mint USDC tokens
-        cast send $USDC_ADDRESS "mint(address,uint256)" $address $usdc_amount \
+        cast send $USDC_ADDRESS "mint(address,uint256)" $address $token_amount \
             --rpc-url http://localhost:$ANVIL_PORT \
             --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 > /dev/null
         
-        log_info "  Account $i ($address): 10 ETH + 1000 USDC"
+        # Mint PYUSD tokens
+        cast send $PYUSD_ADDRESS "mint(address,uint256)" $address $token_amount \
+            --rpc-url http://localhost:$ANVIL_PORT \
+            --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 > /dev/null
+        
+        log_info "  Account $i ($address): 10 ETH + 1000 USDC + 1000 PYUSD"
     done
     
-    log_success "Test accounts funded with USDC"
+    log_success "Test accounts funded with USDC and PYUSD"
     log_success "🎉 Anvil Blockchain Ready!"
 }
 

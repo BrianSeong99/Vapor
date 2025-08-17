@@ -24,6 +24,10 @@ export default function ConfirmPage() {
     isDepositSuccess,
     isApproveLoading,
     isDepositLoading,
+    isApproveError,
+    approveError,
+    isDepositError,
+    depositError,
     approveHash,
     depositHash
   } = usePyusd();
@@ -31,16 +35,16 @@ export default function ConfirmPage() {
   const [showTransactionDetails, setShowTransactionDetails] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [step, setStep] = useState<'input' | 'approve' | 'deposit' | 'success'>('input');
-  const [currentOrderHash, setCurrentOrderHash] = useState<`0x${string}` | null>(null);
+  const [currentBankingHash, setCurrentBankingHash] = useState<`0x${string}` | null>(null);
 
   // Handle approval success - proceed to deposit
   useEffect(() => {
-    if (isApproveSuccess && step === 'approve' && currentOrderHash) {
+    if (isApproveSuccess && step === 'approve' && currentBankingHash) {
       console.log('Approval successful, proceeding to deposit');
       setStep('deposit');
-      depositPyusd(amount, currentOrderHash);
+      depositPyusd(amount, currentBankingHash);
     }
-  }, [isApproveSuccess, step, currentOrderHash, amount, depositPyusd]);
+  }, [isApproveSuccess, step, currentBankingHash, amount, depositPyusd]);
 
   // Handle deposit success - show success and redirect
   useEffect(() => {
@@ -60,28 +64,49 @@ export default function ConfirmPage() {
     }
   }, [step]);
 
+  // Handle transaction errors
+  useEffect(() => {
+    if (isApproveError && step === 'approve') {
+      console.error('Approval transaction failed:', approveError);
+      alert(`Approval transaction failed: ${approveError?.message || 'Unknown error'}`);
+      setStep('input');
+      setIsProcessing(false);
+      setCurrentBankingHash(null);
+    }
+  }, [isApproveError, approveError, step]);
+
+  useEffect(() => {
+    if (isDepositError && step === 'deposit') {
+      console.error('Deposit transaction failed:', depositError);
+      alert(`Deposit transaction failed: ${depositError?.message || 'Unknown error'}`);
+      setStep('input');
+      setIsProcessing(false);
+      setCurrentBankingHash(null);
+    }
+  }, [isDepositError, depositError, step]);
+
   // Add timeout handling for stuck transactions
   useEffect(() => {
     if (!isProcessing) return;
 
     const timeout = setTimeout(() => {
-      if (step === 'approve' && !isApproveSuccess && !isApproveLoading) {
+      if (step === 'approve' && !isApproveSuccess && !isApproveLoading && !isApproveError) {
         console.log('Approval timeout - transaction may have failed');
         alert('Approval transaction timed out. Please try again.');
         setStep('input');
         setIsProcessing(false);
-        setCurrentOrderHash(null);
-      } else if (step === 'deposit' && !isDepositSuccess && !isDepositLoading) {
+        setCurrentBankingHash(null);
+      } else if (step === 'deposit' && !isDepositSuccess && !isDepositLoading && !isDepositError) {
         console.log('Deposit timeout - transaction may have failed');
         alert('Deposit transaction timed out. Please try again.');
         setStep('input');
         setIsProcessing(false);
-        setCurrentOrderHash(null);
+        setCurrentBankingHash(null);
       }
     }, 60000); // 60 second timeout
 
     return () => clearTimeout(timeout);
-  }, [isProcessing, step, isApproveSuccess, isApproveLoading, isDepositSuccess, isDepositLoading]);
+  }, [isProcessing, step, isApproveSuccess, isApproveLoading, isApproveError, isDepositSuccess, isDepositLoading, isDepositError]);
 
   const handleConfirm = async () => {
     if (!authenticated || !userAddress) {
@@ -90,8 +115,8 @@ export default function ConfirmPage() {
       return;
     }
 
-    // Create order hash (simplified for demo)
-    const orderData = {
+    // Create banking hash (simplified for demo)
+    const bankingData = {
       amount: parseFloat(amount),
       bankAccount,
       service,
@@ -99,7 +124,7 @@ export default function ConfirmPage() {
       timestamp: Date.now()
     };
     
-    const orderHash = `0x${Array.from(new TextEncoder().encode(JSON.stringify(orderData)))
+    const bankingHash = `0x${Array.from(new TextEncoder().encode(JSON.stringify(bankingData)))
       .map(b => b.toString(16).padStart(2, '0'))
       .join('')
       .slice(0, 64)
@@ -107,7 +132,7 @@ export default function ConfirmPage() {
 
     try {
       setIsProcessing(true);
-      setCurrentOrderHash(orderHash);
+      setCurrentBankingHash(bankingHash);
       
       // Check if approval is needed
       if (needsApproval(amount)) {
@@ -118,7 +143,7 @@ export default function ConfirmPage() {
         // No approval needed, go directly to deposit
         console.log('No approval needed, proceeding to deposit');
         setStep('deposit');
-        await depositPyusd(amount, orderHash);
+        await depositPyusd(amount, bankingHash);
       }
 
     } catch (error) {
@@ -126,7 +151,7 @@ export default function ConfirmPage() {
       alert('Transaction failed. Please try again.');
       setStep('input');
       setIsProcessing(false);
-      setCurrentOrderHash(null);
+      setCurrentBankingHash(null);
     }
   };
 

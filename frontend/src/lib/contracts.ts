@@ -4,10 +4,10 @@ import { Address } from 'viem';
 export const PYUSD_ADDRESSES = {
   // Ethereum Mainnet
   1: '0x6c3ea9036406852006290770BEdFcAbA0e23A0e8' as Address,
-  // Sepolia Testnet (using MockUSDC from our deployment)
-  11155111: '0x5FbDB2315678afecb367f032d93F642f64180aa3' as Address,
-  // Local Anvil (using MockUSDC from our deployment)
-  31337: '0x5FbDB2315678afecb367f032d93F642f64180aa3' as Address,
+  // Sepolia Testnet (using MockPYUSD from our deployment - will be updated by deployment script)
+  11155111: '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0' as Address,
+  // Local Anvil (using MockPYUSD from our deployment)
+  31337: '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707' as Address,
 } as const;
 
 // VaporBridge Contract Addresses (from our deployment)
@@ -60,8 +60,9 @@ export const ERC20_ABI = [
 export const VAPOR_BRIDGE_ABI = [
   {
     inputs: [
+      { name: 'tokenId', type: 'uint256' },
       { name: 'amount', type: 'uint256' },
-      { name: 'orderHash', type: 'bytes32' },
+      { name: 'bankingHash', type: 'bytes32' },
     ],
     name: 'deposit',
     outputs: [],

@@ -122,11 +122,21 @@ export function usePyusd() {
   const { writeContract: writeDeposit, data: depositHash } = useWriteContract();
 
   // Wait for transactions
-  const { isLoading: isApproveLoading, isSuccess: isApproveSuccess } = useWaitForTransactionReceipt({
+  const { 
+    isLoading: isApproveLoading, 
+    isSuccess: isApproveSuccess, 
+    isError: isApproveError,
+    error: approveError
+  } = useWaitForTransactionReceipt({
     hash: approveHash,
   });
 
-  const { isLoading: isDepositLoading, isSuccess: isDepositSuccess } = useWaitForTransactionReceipt({
+  const { 
+    isLoading: isDepositLoading, 
+    isSuccess: isDepositSuccess, 
+    isError: isDepositError,
+    error: depositError
+  } = useWaitForTransactionReceipt({
     hash: depositHash,
   });
 
@@ -161,16 +171,17 @@ export function usePyusd() {
   };
 
   // Deposit PYUSD to VaporBridge
-  const depositPyusd = async (amount: string, orderHash: `0x${string}`) => {
+  const depositPyusd = async (amount: string, bankingHash: `0x${string}`) => {
     if (!userAddress) throw new Error('Wallet not connected');
     
     const amountBigInt = parseAmount(amount);
+    const tokenId = BigInt(2); // PYUSD token ID from deployment script
     
     writeDeposit({
       address: vaporBridgeAddress,
       abi: VAPOR_BRIDGE_ABI,
       functionName: 'deposit',
-      args: [amountBigInt, orderHash],
+      args: [tokenId, amountBigInt, bankingHash],
     });
   };
 
@@ -181,6 +192,40 @@ export function usePyusd() {
       refetchAllowance();
     }
   }, [isApproveSuccess, isDepositSuccess, refetchBalance, refetchAllowance]);
+
+  // Debug transaction errors
+  useEffect(() => {
+    if (isApproveError && approveError) {
+      console.error('Approve transaction error:', approveError);
+    }
+  }, [isApproveError, approveError]);
+
+  useEffect(() => {
+    if (isDepositError && depositError) {
+      console.error('Deposit transaction error:', depositError);
+    }
+  }, [isDepositError, depositError]);
+
+  // Debug transaction states
+  useEffect(() => {
+    console.log('Transaction Debug State:', {
+      approveHash,
+      depositHash,
+      isApproveLoading,
+      isApproveSuccess,
+      isApproveError,
+      isDepositLoading,
+      isDepositSuccess,
+      isDepositError,
+      approveError: approveError?.message,
+      depositError: depositError?.message
+    });
+  }, [
+    approveHash, depositHash, 
+    isApproveLoading, isApproveSuccess, isApproveError,
+    isDepositLoading, isDepositSuccess, isDepositError,
+    approveError, depositError
+  ]);
 
   return {
     // State
@@ -206,8 +251,12 @@ export function usePyusd() {
     depositHash,
     isApproveLoading,
     isApproveSuccess,
+    isApproveError,
+    approveError,
     isDepositLoading,
     isDepositSuccess,
+    isDepositError,
+    depositError,
     
     // Utility
     refetchBalance,
