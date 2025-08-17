@@ -118,8 +118,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/orders", post(api::orders::create_order))
         .route("/api/v1/orders", get(api::orders::list_orders))
         .route("/api/v1/orders/:order_id", get(api::orders::get_order))
+        .route("/api/v1/orders/:order_id/status", get(api::orders::get_order_status))
         .route("/api/v1/orders/:order_id/mark-paid", post(api::orders::mark_paid))
         .route("/api/v1/orders/match", post(api::orders::match_orders))
+        
+        // Filler endpoints
+        .route("/api/v1/fillers/discovery", get(api::fillers::get_discovery_orders))
+        .route("/api/v1/fillers/orders/:order_id/lock", post(api::fillers::lock_order))
+        .route("/api/v1/fillers/orders/:order_id/payment-proof", post(api::fillers::submit_payment_proof))
         
         // Batch processing endpoints
         .route("/api/v1/batch/start", post(api::batch::start_batch))

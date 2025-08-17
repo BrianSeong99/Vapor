@@ -195,7 +195,11 @@ impl RelayerService {
             to_address: Some(format!("{:?}", event.user)), // User receives to same address
             token_id: self.token_address_to_id(&event.token),
             amount: event.amount.to_string(),
+            bank_account: None, // Will be set when order is created from frontend
+            bank_service: None, // Will be set when order is created from frontend
             banking_hash: Some(format!("{:?}", event.banking_hash)),
+            filler_id: None,
+            locked_amount: None,
             batch_id: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),

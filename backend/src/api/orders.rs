@@ -10,7 +10,7 @@ use chrono::Utc;
 use sqlx::Row;
 
 use super::AppState;
-use crate::models::{CreateOrderRequest, OrderResponse, Order, OrderType, OrderStatus};
+use crate::models::{CreateOrderRequest, OrderResponse, OrderStatusResponse, Order, OrderType, OrderStatus};
 
 #[derive(Debug, Deserialize)]
 pub struct OrderQuery {
@@ -97,13 +97,7 @@ pub async fn create_order(
                 }
             }
             
-            let response = OrderResponse {
-                id: order.id.clone(),
-                order_type: order.order_type,
-                status: order.status,
-                amount: order.amount.clone(),
-                created_at: order.created_at,
-            };
+            let response = OrderResponse::from(&order);
             
             info!("Order created successfully: {}", order.id);
             Ok(Json(response))
@@ -111,6 +105,53 @@ pub async fn create_order(
         Err(e) => {
             error!("Database error creating order: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// Get order status for tracking (GET /orders/:id/status)
+pub async fn get_order_status(
+    Path(order_id): Path<String>,
+    State(app_state): State<AppState>,
+) -> Result<Json<OrderStatusResponse>, StatusCode> {
+    info!("Getting order status for: {}", order_id);
+
+    let query = "SELECT * FROM orders WHERE id = $1";
+    let row = sqlx::query(query)
+        .bind(&order_id)
+        .fetch_optional(&app_state.db)
+        .await
+        .map_err(|e| {
+            error!("Database error fetching order status: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    match row {
+        Some(row) => {
+            let order = Order {
+                id: row.try_get("id").unwrap_or_default(),
+                order_type: OrderType::from(row.try_get::<i32, _>("order_type").unwrap_or(0)),
+                status: OrderStatus::from(row.try_get::<i32, _>("status").unwrap_or(0)),
+                from_address: row.try_get("from_address").ok(),
+                to_address: row.try_get("to_address").ok(),
+                token_id: row.try_get::<i32, _>("token_id").unwrap_or(1) as u32,
+                amount: row.try_get("amount").unwrap_or_default(),
+                bank_account: row.try_get("bank_account").ok(),
+                bank_service: row.try_get("bank_service").ok(),
+                banking_hash: row.try_get("banking_hash").ok(),
+                filler_id: row.try_get("filler_id").ok(),
+                locked_amount: row.try_get("locked_amount").ok(),
+                batch_id: row.try_get::<Option<i32>, _>("batch_id").unwrap_or(None).map(|id| id as u32),
+                created_at: row.try_get("created_at").unwrap_or_default(),
+                updated_at: row.try_get("updated_at").unwrap_or_default(),
+            };
+            
+            let status_response = OrderStatusResponse::from(order);
+            Ok(Json(status_response))
+        }
+        None => {
+            warn!("Order not found for status: {}", order_id);
+            Err(StatusCode::NOT_FOUND)
         }
     }
 }
@@ -153,7 +194,11 @@ pub async fn mark_paid(
                 to_address: Some("filler_address".to_string()), // TODO: Get from matching
                 token_id: row.try_get::<i32, _>("token_id").unwrap_or(1) as u32,
                 amount: row.try_get("amount").unwrap_or_default(),
+                bank_account: None,
+                bank_service: None,
                 banking_hash: None,
+                filler_id: None,
+                locked_amount: None,
                 batch_id: None,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
@@ -248,6 +293,10 @@ pub async fn list_orders(
             order_type: OrderType::from(row.try_get::<i32, _>("order_type").unwrap_or(0)),
             status: OrderStatus::from(row.try_get::<i32, _>("status").unwrap_or(0)),
             amount: row.try_get("amount").unwrap_or_default(),
+            bank_account: row.try_get("bank_account").ok(),
+            bank_service: row.try_get("bank_service").ok(),
+            filler_id: row.try_get("filler_id").ok(),
+            locked_amount: row.try_get("locked_amount").ok(),
             created_at: row.try_get("created_at").unwrap_or_default(),
         })
         .collect();
@@ -282,6 +331,10 @@ pub async fn get_order(
                 order_type: OrderType::from(row.try_get::<i32, _>("order_type").unwrap_or(0)),
                 status: OrderStatus::from(row.try_get::<i32, _>("status").unwrap_or(0)),
                 amount: row.try_get("amount").unwrap_or_default(),
+                bank_account: row.try_get("bank_account").ok(),
+                bank_service: row.try_get("bank_service").ok(),
+                filler_id: row.try_get("filler_id").ok(),
+                locked_amount: row.try_get("locked_amount").ok(),
                 created_at: row.try_get("created_at").unwrap_or_default(),
             };
             

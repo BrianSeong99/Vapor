@@ -10,7 +10,11 @@ pub struct Order {
     pub to_address: Option<String>,
     pub token_id: u32,
     pub amount: String,
-    pub banking_hash: Option<String>,
+    pub bank_account: Option<String>,        // New: Bank account for off-ramp
+    pub bank_service: Option<String>,        // New: Bank service name (PayPal, ACH, etc.)
+    pub banking_hash: Option<String>,        // Payment proof/receipt hash
+    pub filler_id: Option<String>,           // New: ID of filler who locked this order
+    pub locked_amount: Option<String>,       // New: Amount locked by filler
     pub status: OrderStatus,
     pub batch_id: Option<u32>,
     pub created_at: DateTime<Utc>,
@@ -39,21 +43,23 @@ impl From<i32> for OrderType {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[repr(i32)]
 pub enum OrderStatus {
-    Pending = 0,
-    Locked = 1,
-    MarkPaid = 2,
-    Settled = 3,
-    Failed = 4,
+    Pending = 0,        // Order created, waiting for blockchain confirmation
+    Discovery = 1,      // New: In discovery phase, visible to fillers
+    Locked = 2,         // Locked by a filler, waiting for payment
+    MarkPaid = 3,       // Filler has submitted payment proof
+    Settled = 4,        // Order completed and settled
+    Failed = 5,         // Order failed or cancelled
 }
 
 impl From<i32> for OrderStatus {
     fn from(value: i32) -> Self {
         match value {
             0 => OrderStatus::Pending,
-            1 => OrderStatus::Locked,
-            2 => OrderStatus::MarkPaid,
-            3 => OrderStatus::Settled,
-            4 => OrderStatus::Failed,
+            1 => OrderStatus::Discovery,
+            2 => OrderStatus::Locked,
+            3 => OrderStatus::MarkPaid,
+            4 => OrderStatus::Settled,
+            5 => OrderStatus::Failed,
             _ => OrderStatus::Pending, // Default fallback
         }
     }
@@ -116,6 +122,8 @@ pub struct CreateOrderRequest {
     pub to_address: Option<String>,
     pub token_id: u32,
     pub amount: String,
+    pub bank_account: Option<String>,     // New: Bank account for off-ramp
+    pub bank_service: Option<String>,     // New: Bank service name
     pub banking_hash: Option<String>,
 }
 
@@ -125,7 +133,50 @@ pub struct OrderResponse {
     pub order_type: OrderType,
     pub status: OrderStatus,
     pub amount: String,
+    pub bank_account: Option<String>,
+    pub bank_service: Option<String>,
+    pub filler_id: Option<String>,
+    pub locked_amount: Option<String>,
     pub created_at: DateTime<Utc>,
+}
+
+/// Request to lock an order for filling
+#[derive(Debug, Deserialize)]
+pub struct LockOrderRequest {
+    pub filler_id: String,
+    pub amount: String,
+}
+
+/// Request to submit payment proof
+#[derive(Debug, Deserialize)]
+pub struct SubmitPaymentProofRequest {
+    pub banking_hash: String,
+}
+
+/// Order status tracking for seller
+#[derive(Debug, Serialize)]
+pub struct OrderStatusResponse {
+    pub id: String,
+    pub status: OrderStatus,
+    pub phase: OrderPhase,
+    pub progress_percentage: u8,
+    pub estimated_completion: Option<DateTime<Utc>>,
+    pub filler_info: Option<FillerInfo>,
+}
+
+/// Three phases of order processing
+#[derive(Debug, Serialize)]
+pub enum OrderPhase {
+    PrivateListing,    // Order created, waiting for blockchain confirmation
+    FindingFillers,    // In discovery, looking for fillers
+    SendingUSD,        // Locked by filler, processing payment
+}
+
+/// Filler information
+#[derive(Debug, Serialize)]
+pub struct FillerInfo {
+    pub id: String,
+    pub locked_amount: String,
 }
 
 impl Order {
@@ -137,7 +188,11 @@ impl Order {
             to_address: req.to_address,
             token_id: req.token_id,
             amount: req.amount,
+            bank_account: req.bank_account,
+            bank_service: req.bank_service,
             banking_hash: req.banking_hash,
+            filler_id: None,
+            locked_amount: None,
             status: OrderStatus::Pending,
             batch_id: None,
             created_at: Utc::now(),
@@ -154,6 +209,27 @@ impl Order {
     /// Assign order to a batch
     pub fn assign_to_batch(&mut self, batch_id: u32) {
         self.batch_id = Some(batch_id);
+        self.updated_at = Utc::now();
+    }
+    
+    /// Lock order for a filler
+    pub fn lock_for_filler(&mut self, filler_id: String, amount: String) {
+        self.filler_id = Some(filler_id);
+        self.locked_amount = Some(amount);
+        self.status = OrderStatus::Locked;
+        self.updated_at = Utc::now();
+    }
+    
+    /// Mark order as discovered (available for fillers)
+    pub fn mark_discovered(&mut self) {
+        self.status = OrderStatus::Discovery;
+        self.updated_at = Utc::now();
+    }
+    
+    /// Submit payment proof
+    pub fn submit_payment_proof(&mut self, banking_hash: String) {
+        self.banking_hash = Some(banking_hash);
+        self.status = OrderStatus::MarkPaid;
         self.updated_at = Utc::now();
     }
 
@@ -318,7 +394,40 @@ impl From<&Order> for OrderResponse {
             order_type: order.order_type,
             status: order.status,
             amount: order.amount.clone(),
+            bank_account: order.bank_account.clone(),
+            bank_service: order.bank_service.clone(),
+            filler_id: order.filler_id.clone(),
+            locked_amount: order.locked_amount.clone(),
             created_at: order.created_at,
+        }
+    }
+}
+
+impl From<Order> for OrderStatusResponse {
+    fn from(order: Order) -> Self {
+        let (phase, progress_percentage) = match order.status {
+            OrderStatus::Pending => (OrderPhase::PrivateListing, 10),
+            OrderStatus::Discovery => (OrderPhase::FindingFillers, 40),
+            OrderStatus::Locked => (OrderPhase::SendingUSD, 70),
+            OrderStatus::MarkPaid => (OrderPhase::SendingUSD, 90),
+            OrderStatus::Settled => (OrderPhase::SendingUSD, 100),
+            OrderStatus::Failed => (OrderPhase::PrivateListing, 0),
+        };
+        
+        let filler_info = if let (Some(filler_id), Some(locked_amount)) = 
+            (order.filler_id.clone(), order.locked_amount.clone()) {
+            Some(FillerInfo { id: filler_id, locked_amount })
+        } else {
+            None
+        };
+        
+        Self {
+            id: order.id,
+            status: order.status,
+            phase,
+            progress_percentage,
+            estimated_completion: None, // TODO: Calculate based on historical data
+            filler_info,
         }
     }
 }

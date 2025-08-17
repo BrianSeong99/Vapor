@@ -14,6 +14,7 @@ pub mod orders;
 pub mod batch;
 pub mod proofs;
 pub mod relayer;
+pub mod fillers;
 
 #[derive(Clone)]
 pub struct AppState {
