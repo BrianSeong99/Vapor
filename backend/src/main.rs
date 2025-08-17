@@ -54,6 +54,47 @@ async fn main() -> anyhow::Result<()> {
     // Store port before moving config
     let port = config.api.port;
 
+    // Initialize blockchain client (for MVP, we'll create a simple mock)
+    // In production, you'd initialize this with real contract addresses
+    // let blockchain_client = blockchain::BlockchainClient::new(...).await?;
+
+    // For MVP, we'll initialize the app state without blockchain client
+    // The relayer will be disabled until blockchain client is properly configured
+    let app_state = api::AppState::new(config, db);
+
+    // TODO: Add blockchain client initialization when contract addresses are available
+    // app_state = app_state.with_blockchain_client(blockchain_client);
+
+    // TODO: Initialize and start relayer service
+    // if let Some(blockchain_client) = &app_state.blockchain_client {
+    //     let relayer_config = services::relayer::RelayerConfig::default();
+    //     let relayer = services::relayer::RelayerService::new(
+    //         blockchain_client.clone(),
+    //         app_state.db.clone(),
+    //         app_state.matching_engine.clone(),
+    //         app_state.batch_processor.clone(),
+    //         relayer_config.clone(),
+    //     ).await?;
+    //     
+    //     app_state = app_state.with_relayer_service(relayer).await;
+    //     
+    //     // Start relayer service in background
+    //     let relayer_service = app_state.relayer_service.clone();
+    //     tokio::spawn(async move {
+    //         if let Some(relayer_service) = relayer_service {
+    //             if let Ok(mut relayer) = relayer_service.try_lock() {
+    //                 if let Err(e) = relayer.start(relayer_config).await {
+    //                     error!("Relayer service failed: {}", e);
+    //                 }
+    //             }
+    //         }
+    //     });
+    //     
+    //     info!("Relayer service started in background");
+    // } else {
+    //     warn!("Blockchain client not configured, relayer service disabled");
+    // }
+
     // Build our application with routes
     let app = Router::new()
         // Health endpoints
@@ -82,8 +123,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/v1/proofs/batch/:batch_id", get(api::proofs::get_batch_proofs))
         .route("/api/v1/proofs/stats", get(api::proofs::get_proof_stats))
         
+        // Relayer endpoints
+        .route("/api/v1/relayer/status", get(api::relayer::get_relayer_status))
+        .route("/api/v1/relayer/process-events", post(api::relayer::process_events_manually))
+        .route("/api/v1/relayer/config", post(api::relayer::update_relayer_config))
+        .route("/api/v1/relayer/blockchain", get(api::relayer::get_blockchain_status))
+        
         .layer(CorsLayer::permissive())
-        .with_state(api::AppState::new(config, db));
+        .with_state(app_state);
 
     // Run the server
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
