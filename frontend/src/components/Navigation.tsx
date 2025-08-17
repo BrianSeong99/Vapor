@@ -11,6 +11,7 @@ export default function Navigation() {
   const { authenticated, user, login, logout } = usePrivy();
   const { userAddress, formattedBalance, refetchBalance, chainId, targetChainId } = usePyusd();
   const [showWallet, setShowWallet] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   const handleFundWallet = async () => {
     if (!userAddress) return;
@@ -31,7 +32,34 @@ export default function Navigation() {
 
   return (
     <div className="fixed top-4 right-4 z-50">
-      <div className="bg-black bg-opacity-50 rounded-lg p-2 text-xs">
+      <div className="bg-black bg-opacity-50 rounded-lg text-xs transition-all duration-300 ease-in-out">
+        {/* Header with Minimize Button */}
+        <div className="flex items-center justify-between p-2 border-b border-gray-600">
+          <span className="text-white text-xs font-semibold">
+            Navigation
+          </span>
+          <button
+            onClick={() => setIsMinimized(!isMinimized)}
+            className="text-white hover:text-gray-300 hover:bg-white hover:bg-opacity-10 p-1 rounded transition-colors duration-200"
+            title={isMinimized ? "Expand Navigation" : "Minimize Navigation"}
+          >
+            {isMinimized ? (
+              // Expand icon (chevron down)
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path fillRule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+              </svg>
+            ) : (
+              // Minimize icon (chevron up)
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <path fillRule="evenodd" d="M7.646 4.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1-.708.708L8 5.707 2.354 11.354a.5.5 0 1 1-.708-.708l6-6z"/>
+              </svg>
+            )}
+          </button>
+        </div>
+
+        {/* Navigation Content - only show when not minimized */}
+        {!isMinimized && (
+          <div className="p-2">
         {/* Seller Flow */}
         <div className="mb-2">
           <div className="text-white text-xs mb-1 px-1">Seller:</div>
@@ -172,6 +200,8 @@ export default function Navigation() {
             )}
           </div>
         </div>
+          </div>
+        )}
       </div>
     </div>
   );
